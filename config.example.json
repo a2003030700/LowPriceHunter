@@ -1,0 +1,26 @@
+{
+  "groups": [],
+  "rules": [
+    {
+      "name": "iPhone 15",
+      "keywords": ["iPhone 15", "iPhone 16"],
+      "exclude": ["殼", "貼", "充電線", "徵求", "收購", "已售", "【收】", "預算"],
+      "require": ["128G", "256G", "512G", "Pro", "保固"],
+      "price_near_keyword": true,
+      "near_distance": 40,
+      "reject_multi_item": true,
+      "bundle_words": ["合售", "整組", "全套", "打包", "一起帶", "含運"],
+      "min_price": 8000,
+      "max_price": 25000
+    }
+  ],
+  "email": { "to": "", "mode": "bot" },
+  "notify_mode": "instant",
+  "digest_hour": 21,
+  "max_post_age_minutes": 10,
+  "autostart": false,
+  "auto_monitor": false,
+  "interval_seconds": 300,
+  "max_posts_per_group": 80,
+  "profile_dir": "data/ui_profile"
+}
