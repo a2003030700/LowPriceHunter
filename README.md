@@ -1,3 +1,4 @@
+Low Price Hunter is a local-first Windows desktop app that monitors Facebook buy/sell groups and sends Email, Telegram, or Discord alerts when a listing matches your keywords and price range.
 # Low Price Hunter
 
 掃描你已加入的 Facebook 買賣社團，找到符合「關鍵字＋價格區間」的貼文就寄 Email 通知。
