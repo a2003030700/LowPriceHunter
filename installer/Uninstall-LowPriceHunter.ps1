@@ -1,4 +1,4 @@
-$ErrorActionPreference = "SilentlyContinue"
+﻿$ErrorActionPreference = "SilentlyContinue"
 $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\LowPriceHunter"
 
 Get-Process LowPriceHunter, LowPriceHunterHost | Stop-Process -Force

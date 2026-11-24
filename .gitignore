@@ -221,3 +221,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Low Price Hunter build output
+# 只保留內附的可攜版 zip（讓 Code → Download ZIP 也能離線安裝），其餘建置產物不進 git
+/software/*
+!/software/LowPriceHunter.zip
+dist/
+build/
+*.spec
+dist_release/
+data/bot_email.json
+data/bot_email.dpapi

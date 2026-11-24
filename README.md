@@ -1,6 +1,12 @@
 Low Price Hunter is a local-first Windows desktop app that monitors Facebook buy/sell groups and sends Email, Telegram, or Discord alerts when a listing matches your keywords and price range.
 # Low Price Hunter
 
+> **只想使用？**
+> 直接按右上角綠色 **Code → Download ZIP**，解壓後雙擊 `一鍵安裝 Low Price Hunter.bat` 即可。
+> 執行檔已內附在 `software/LowPriceHunter.zip`，安裝器會自動解壓，**不需要另外下載任何檔案**。
+>
+> 也可以在 [Releases](https://github.com/a2003030700/LowPriceHunter/releases/latest) 下載打包好的可攜版。
+
 掃描你已加入的 Facebook 買賣社團，找到符合「關鍵字＋價格區間」的貼文就寄 Email 通知。
 介面是 **WebView2 原生視窗**（不是瀏覽器分頁），支援多社團、多物品、即時或每日摘要。
 
@@ -56,10 +62,20 @@ Low Price Hunter is a local-first Windows desktop app that monitors Facebook buy
 
 ## 一鍵安裝（推薦）
 
-解壓縮後，直接雙擊根目錄的：
+到 [Releases](https://github.com/a2003030700/LowPriceHunter/releases/latest) 下載 **`LowPriceHunter-vX.Y.Z-win64.zip`**，
+解壓後直接雙擊資料夾內的：
 
 ```
 一鍵安裝 Low Price Hunter.bat
+```
+
+這個 zip 已含完整程式（`software/LowPriceHunter/`）與安裝器，**不需要另外下載 update 檔**。
+
+若你下載的是原始碼（沒有 `software/`），安裝器會自動從 GitHub Releases 取得可攜版再安裝；
+要強制只使用本機檔案可加 `-NoDownload`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\Install-LowPriceHunter.ps1 -NoDownload
 ```
 
 安裝器會：
@@ -76,12 +92,12 @@ Low Price Hunter is a local-first Windows desktop app that monitors Facebook buy
 
 ## 快速開始（可攜版）
 
-1. 解壓縮這個壓縮檔。
-2. 進入 `software/LowPriceHunter/`。
-3. 雙擊 `LowPriceHunter.exe` 後，在「Email 通知」步驟填機器人 Gmail 與應用程式密碼，按「儲存機器人信箱」。
+1. 解壓縮 `LowPriceHunter-vX.Y.Z-win64.zip`。
+2. 建議直接雙擊根目錄的 `一鍵安裝 Low Price Hunter.bat`；
+   若不想安裝，進入 `software/LowPriceHunter/` 直接執行 `LowPriceHunter.exe`。
+3. 在「Email 通知」步驟填機器人 Gmail 與應用程式密碼，按「儲存機器人信箱」。
    （也可以先建立 `data/bot_email.json`，見下方說明。）
-4. 雙擊 `LowPriceHunter.exe`。
-5. 在視窗中依序完成：
+4. 依序完成：
    - 按「開啟瀏覽器登入」登入 Facebook
    - 按「抓取我已加入的社團」或手動貼網址
    - 設定要監控的物品與價格
