@@ -553,17 +553,34 @@ class FBScraper:
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
         time.sleep(2.5)
         self._check_blocked(page)
-        try:
-            title_text = _post_text_from_title(page.title())
-            if len(title_text) > 20:
-                return title_text[:6000]
-        except Exception:
-            pass
+
+        # 先展開「查看更多 / 顯示更多」，否則只會拿到截斷的內容
+        for label in ("查看更多", "顯示更多", "See more"):
+            try:
+                btn = page.locator(f'div[role="article"] div[role="button"]:has-text("{label}")')
+                for i in range(min(btn.count(), 3)):
+                    btn.nth(i).click(timeout=1200)
+                    page.wait_for_timeout(250)
+            except Exception:
+                continue
+
+        # 以貼文本體為優先；標題只當最後手段（標題常常只有一行）
+        texts = page.eval_on_selector_all(
+            'div[role="article"], div[data-ad-preview="message"], div[data-ad-comet-preview="message"]',
+            """els => els
+                .filter(e => !(e.parentElement && e.parentElement.closest('div[role="article"]')))
+                .map(e => (e.innerText || '').trim())
+                .filter(t => t.length > 20)""",
+        )
+        if texts:
+            return max(texts, key=len)[:6000]
+
         og = page.evaluate(
             "document.querySelector('meta[property=\"og:description\"]')?.content || ''"
         )
         if og and len(og.strip()) > 20:
             return og.strip()[:6000]
+
         og_title = page.evaluate(
             "document.querySelector('meta[property=\"og:title\"]')?.content || ''"
         )
@@ -571,12 +588,14 @@ class FBScraper:
             text = _post_text_from_title(og_title)
             if len(text) > 20:
                 return text[:6000]
-        texts = page.eval_on_selector_all(
-            'div[role="article"], div[data-ad-preview="message"], div[data-ad-comet-preview="message"]',
-            "els => els.map(e => (e.innerText || '').trim()).filter(t => t.length > 20)",
-        )
-        if texts:
-            return max(texts, key=len)[:6000]
+
+        try:
+            title_text = _post_text_from_title(page.title())
+            if len(title_text) > 20:
+                return title_text[:6000]
+        except Exception:
+            pass
+
         try:
             body = page.inner_text("body")
         except Exception:

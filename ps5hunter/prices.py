@@ -18,7 +18,7 @@ _SINGLE_RE = re.compile(
 )
 _RANGE_SEP_RE = re.compile(r"\s*(?:-|–|—|~|～|至|到)\s*")
 _SUFFIX_BLOCK_RE = re.compile(
-    r"^\s*(?:[A-Za-z]|年|月|日|號|型|吋|寸|GB|TB|Gb|Tb|g|G|代|版|成|樓|人|個|組|顆|片|次|%|％|/|:|："
+    r"^(?:[A-Za-z]|年|月|日|號|型|吋|寸|GB|TB|Gb|Tb|g|G|代|版|成|樓|人|個|組|顆|片|次|%|％|/|:|："
     r"|台|支|張|套|件|隻|條|瓶|盒|包|罐|捲|雙|對|杯|本|份|間|棟|輛|部|艘|架)"
 )
 _MODEL_PREFIX_RE = re.compile(r"(?:CFI|CUH|型號|MODEL)\s*[-:]?\s*$", re.IGNORECASE)
@@ -28,6 +28,21 @@ _CONTEXT_RE = re.compile(
     r"售|賣|價|降|出清|出價|面交|自取|含運|運費|可議|開價|折|便宜|收購|預算|費用|元|塊"
 )
 _SHIP_RE = re.compile(r"含運|含運費|運費內含|免運")
+
+# 使用者常把「36,000」打成「3,6000」。這種逗號分組不合法（逗號後不是 3 位），
+# 直接移除逗號會得到 36000，比取前段 3,600 更接近原意。
+_MALFORMED_COMMA_RE = re.compile(r"\d{1,3}(?:,\d{1,4})+")
+
+
+def _normalize_comma_numbers(text: str) -> str:
+    def fix(match: re.Match) -> str:
+        raw = match.group(0)
+        parts = raw.split(",")
+        if 1 <= len(parts[0]) <= 3 and all(len(p) == 3 for p in parts[1:]):
+            return raw
+        return raw.replace(",", "")
+
+    return _MALFORMED_COMMA_RE.sub(fix, text)
 
 
 @dataclass(frozen=True)
@@ -109,6 +124,7 @@ def find_prices(
     """回傳所有像價格的片段，支援區間價與含運。"""
     if not text:
         return []
+    text = _normalize_comma_numbers(text)
     hits: list[PriceHit] = []
     occupied: list[tuple[int, int]] = []
 
