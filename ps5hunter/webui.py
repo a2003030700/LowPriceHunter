@@ -86,6 +86,19 @@ LOG_PATH = DATA / "ui.log"
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 CSRF_TOKEN = secrets.token_urlsafe(32)
+
+_SECRET_RES = (
+    (re.compile(r"bot\d+:[A-Za-z0-9_-]{20,}"), "bot<token>"),
+    (re.compile(r"https://discord(?:app)?\.com/api/webhooks/[^\s\"']+"), "https://discord.com/api/webhooks/<masked>"),
+    (re.compile(r"\b\d{8,}:[A-Za-z0-9_-]{30,}\b"), "<token>"),
+)
+
+
+def _mask_secrets(text: str) -> str:
+    """日誌不可出現 Bot Token / Webhook 等憑證。"""
+    for pattern, repl in _SECRET_RES:
+        text = pattern.sub(repl, str(text))
+    return text
 if getattr(sys, "frozen", False):
     _BUNDLE = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     UI_PATH = _BUNDLE / "ps5hunter" / "ui" / "index.html"
@@ -255,7 +268,7 @@ class App:
         self.logger.addHandler(dh)
 
     def log(self, message: str):
-        self.logger.info(message)
+        self.logger.info(_mask_secrets(message))
 
     # ---------------------------------------------------------------- status
     @property
