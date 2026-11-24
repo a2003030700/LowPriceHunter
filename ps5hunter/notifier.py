@@ -23,14 +23,24 @@ def _post_json(url: str, payload: dict, timeout: int = 20) -> None:
     req = urllib.request.Request(
         url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Discord / Telegram 前面的 Cloudflare 會擋掉 Python-urllib 預設 UA（403）
+            "User-Agent": "LowPriceHunter/1.2 (+https://github.com/a2003030700/LowPriceHunter)",
+        },
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             resp.read()
     except urllib.error.HTTPError as exc:
-        raise NotificationError(f"HTTP {exc.code}") from None
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", "ignore").strip()[:200]
+        except Exception:
+            detail = ""
+        raise NotificationError(f"HTTP {exc.code}" + (f"：{detail}" if detail else "")) from None
     except Exception:
         raise NotificationError("連線失敗") from None
 
