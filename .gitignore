@@ -230,5 +230,10 @@ dist/
 build/
 *.spec
 dist_release/
-data/bot_email.json
-data/bot_email.dpapi
+# 個人設定與登入狀態絕不進版控（關鍵字、Email、Cookie、資料庫）
+data/
+!data/bot_email.example.json
+*.dpapi
+ui_profile/
+webview_profile/
+*.db

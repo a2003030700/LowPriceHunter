@@ -25,6 +25,15 @@ if (-not (Test-Path (Join-Path $appDir "LowPriceHunter.exe"))) {
 
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
+# ---- 隱私保護：打包前清掉 data/ 內的個人設定（只保留範例檔）----
+$dataDir = Join-Path $appDir "data"
+if (Test-Path $dataDir) {
+    $allowed = @("bot_email.example.json", ".env.example")
+    Get-ChildItem $dataDir -Force |
+        Where-Object { $allowed -notcontains $_.Name } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # ---- 可攜版：解壓後直接雙擊「一鍵安裝」即可，不需要另外下載 update ----
 $stage = Join-Path $OutDir "LowPriceHunter-$verTag-win64"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue

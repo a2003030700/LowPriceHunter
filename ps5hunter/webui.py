@@ -39,7 +39,10 @@ from .notifier import (
     send_gmail,
     send_telegram,
 )
-from .ptt_survey import scan_ptt
+try:  # PTT 價格調查是選用功能，缺少模組時不應影響主程式啟動
+    from .ptt_survey import scan_ptt
+except Exception:  # noqa: BLE001
+    scan_ptt = None
 from .survey import aggregate_daily
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -518,6 +521,9 @@ class App:
 
     def _run_survey(self, rule: Rule) -> None:
         try:
+            if scan_ptt is None:
+                raise RuntimeError("這個版本未包含 PTT 價格調查功能")
+
             def progress(done: int, total: int, message: str) -> None:
                 self.survey.update(done=done, total=total, message=message)
 
