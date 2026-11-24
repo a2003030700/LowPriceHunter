@@ -575,6 +575,21 @@ class FBScraper:
         if texts:
             return max(texts, key=len)[:6000]
 
+        # 新版 Facebook 把貼文本體放在 role=main 之外，整頁 innerText 反而最完整
+        try:
+            body = page.inner_text("body")
+        except Exception:
+            body = ""
+        body = "\n".join(
+            line for line in body.splitlines()
+            if line.strip() and line.strip() != "Facebook"
+        )
+        home = body.find("首頁")
+        if home > 0:
+            body = body[home + 2:]
+        if len(body.strip()) > 150:
+            return body.strip()[:6000]
+
         og = page.evaluate(
             "document.querySelector('meta[property=\"og:description\"]')?.content || ''"
         )
@@ -600,11 +615,6 @@ class FBScraper:
             body = page.inner_text("body")
         except Exception:
             body = ""
-
-        # Facebook 有時只回骨架（大量 "Facebook" 佔位字、沒有貼文本體），
-        # 這時回空字串讓上層顯示「抓不到內容」，而不是拿標題誤導使用者。
-        if body.count("Facebook") >= 15 and len(body) < 4000:
-            return ""
         return body.strip()[:4000]
 
     def resolve_post_link(self, post: Post) -> str | None:
