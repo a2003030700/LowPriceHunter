@@ -1109,6 +1109,7 @@ el('btn-save').onclick = async ()=>{
 };
 
 async function startMonitoring(){
+  clearTimeout(stopPoll);
   await api('/api/save', {config: collect()});
   const r = await api('/api/start', {});
   const msg = r.ok ? '<span class="ok">監控已啟動</span>' : '<span class="bad">'+esc(r.error || '啟動失敗')+'</span>';
@@ -1117,12 +1118,35 @@ async function startMonitoring(){
   refresh();
 }
 
+let stopPoll = null;
+
+function setMonitorStatus(html){
+  el('save-status').innerHTML = html;
+  const cover = el('cover-status');
+  if (cover) cover.innerHTML = html;
+}
+
 async function stopMonitoring(){
   await api('/api/stop', {});
-  const msg = '<span class="warn">正在停止…</span>';
-  el('save-status').innerHTML = msg;
-  el('cover-status').innerHTML = msg;
-  setTimeout(refresh, 1500);
+  clearTimeout(stopPoll);
+  setMonitorStatus('<span class="warn">正在停止…</span>');
+  let tries = 0;
+  const tick = async () => {
+    let st = null;
+    try { st = (await api('/api/state')).status; } catch (e) { st = null; }
+    await refresh();
+    if (st && !st.monitoring) {
+      setMonitorStatus('<span class="ok">監控已停止</span>');
+      return;
+    }
+    tries += 1;
+    if (tries >= 60) {
+      setMonitorStatus('<span class="warn">仍在等待本輪掃描結束，請稍候</span>');
+      return;
+    }
+    stopPoll = setTimeout(tick, 2000);
+  };
+  stopPoll = setTimeout(tick, 1200);
 }
 
 el('btn-start').onclick = startMonitoring;
