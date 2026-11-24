@@ -600,6 +600,11 @@ class FBScraper:
             body = page.inner_text("body")
         except Exception:
             body = ""
+
+        # Facebook 有時只回骨架（大量 "Facebook" 佔位字、沒有貼文本體），
+        # 這時回空字串讓上層顯示「抓不到內容」，而不是拿標題誤導使用者。
+        if body.count("Facebook") >= 15 and len(body) < 4000:
+            return ""
         return body.strip()[:4000]
 
     def resolve_post_link(self, post: Post) -> str | None:

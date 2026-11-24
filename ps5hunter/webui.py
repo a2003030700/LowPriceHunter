@@ -489,7 +489,10 @@ class App:
                 else:
                     text = fb.read_post_text(url)
                 if not text.strip():
-                    return {"ok": False, "error": "抓不到貼文內容"}
+                    return {
+                        "ok": False,
+                        "error": "Facebook 沒有回傳貼文內容（可能被限制、貼文已刪除，或登入狀態需要重新整理）",
+                    }
                 return {"ok": True, "text": text[:6000]}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
