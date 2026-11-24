@@ -575,6 +575,26 @@ class FBScraper:
         if texts:
             return max(texts, key=len)[:6000]
 
+        # 用貼文 ID 找到對應的連結，再往上找貼文容器，避免抓到整頁（含其他貼文與廣告）
+        pid_match = re.search(r"/(?:posts|permalink)/(\d+)", url)
+        if pid_match:
+            post_text = page.evaluate(
+                """(pid) => {
+                    const a = Array.from(document.querySelectorAll('a[href*="' + pid + '"]'))[0];
+                    if (!a) return '';
+                    let el = a;
+                    for (let i = 0; i < 10 && el.parentElement; i++) {
+                        el = el.parentElement;
+                        const t = (el.innerText || '').trim();
+                        if (t.length >= 150 && t.length <= 3000) return t;
+                    }
+                    return '';
+                }""",
+                pid_match.group(1),
+            )
+            if post_text and len(post_text.strip()) > 50:
+                return post_text.strip()[:6000]
+
         # 新版 Facebook 把貼文本體放在 role=main 之外，整頁 innerText 反而最完整
         try:
             body = page.inner_text("body")
