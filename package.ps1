@@ -63,3 +63,4 @@ if (-not $KeepStaging) { Remove-Item $stage -Recurse -Force -ErrorAction Silentl
 
 Get-Item $portableZip, $updateZip | Select-Object Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } } | Format-Table -AutoSize
 Write-Host "打包完成。上傳這兩個檔案到 GitHub Release 即可。"
+exit 0

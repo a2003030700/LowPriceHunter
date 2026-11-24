@@ -75,3 +75,4 @@ if (Test-Path $example) {
 }
 
 & (Join-Path $root "package.ps1")
+exit 0

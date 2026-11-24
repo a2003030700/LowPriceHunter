@@ -62,6 +62,10 @@ jobs:
           --collect-all playwright
           start_ui.py
 
+      - name: Smoke test (exe must start and serve UI)
+        shell: pwsh
+        run: ./smoke.ps1
+
       - name: Package (portable + update)
         shell: pwsh
         run: |
