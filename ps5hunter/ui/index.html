@@ -106,8 +106,9 @@
     <div class="step"><div class="num">⬆</div><h2>有新版本可用</h2></div>
     <p id="update-message" class="hint"></p>
     <div class="actions">
-      <button class="btn good" id="btn-update-open">查看更新</button>
-      <button class="btn ghost" id="btn-update-download">下載更新檔</button>
+      <button class="btn good" id="btn-update-apply">一鍵自動更新並重啟</button>
+      <button class="btn ghost" id="btn-update-download">僅下載更新檔</button>
+      <button class="btn ghost" id="btn-update-open">查看更新</button>
       <button class="btn ghost" id="btn-update-skip">略過此版本</button>
     </div>
     <p class="hint" id="update-status"></p>
@@ -650,8 +651,8 @@ function renderUpdate(update){
       ? 'New version ' + update.latest + ' (current ' + update.current + ')'
       : '新版本 ' + update.latest + '（目前 ' + update.current + '）';
     el('update-status').textContent = en
-      ? 'Unzip and overwrite the app; the data folder is kept.'
-      : '下載後解壓縮覆蓋程式即可，data 資料夾會保留。';
+      ? 'Click One-Click Update to replace the old binary, clean up temporary files, and restart automatically (data is kept).'
+      : '點「一鍵自動更新並重啟」會自動覆蓋舊版程式、清除暫存檔並重啟，data 資料夾內的登入與設定會完整保留。';
   }
   const settings = el('update-settings-status');
   if (!settings) return;
@@ -1207,6 +1208,20 @@ el('btn-update-check-settings').onclick = async ()=>{
 el('btn-update-open').onclick = async ()=>{
   const r = await api('/api/update/open', {});
   if (!r.ok) el('update-status').innerHTML = '<span class="bad">' + esc(r.error || '無法開啟') + '</span>';
+};
+
+el('btn-update-apply').onclick = async ()=>{
+  if (!confirm('將自動下載新版本、關閉並覆蓋舊版程式、清除暫存檔後重新啟動（data 內的登入與設定會完整保留）。確定立即更新嗎？')) return;
+  const btn = el('btn-update-apply');
+  btn.disabled = true;
+  el('update-status').innerHTML = '<span class="warn">正在下載並驗證更新檔，請勿關閉電腦…</span>';
+  const r = await api('/api/update/apply', {});
+  if (r.ok) {
+    el('update-status').innerHTML = '<span class="ok">更新準備完成！程式即將自動關閉並於幾秒內重新啟動新版…</span>';
+  } else {
+    btn.disabled = false;
+    el('update-status').innerHTML = '<span class="bad">' + esc(r.error || '自動更新失敗') + '</span>';
+  }
 };
 
 el('btn-update-download').onclick = async ()=>{

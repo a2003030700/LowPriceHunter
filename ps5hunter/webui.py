@@ -13,6 +13,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -30,7 +31,12 @@ from .channels import ChannelStore
 from .config import ROOT, load_dotenv
 from .db import Store
 from . import __version__
-from .updater import UpdateError, check_for_update
+from .updater import (
+    UpdateError,
+    build_apply_update_script,
+    check_for_update,
+    extract_update_package,
+)
 from .generic import analyze_detail, analyze_post, analyze_text, find_risk_words, rule_from_dict, Rule
 from .notifier import (
     build_digest_message,
@@ -839,6 +845,75 @@ class App:
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
 
+    def apply_update(self) -> dict:
+        """一鍵自動套用更新：下載驗證 → 停止監控 → 脫離背景覆蓋舊版並清除暫存 → 自動重啟。"""
+        if not getattr(sys, "frozen", False):
+            return {"ok": False, "error": "原始碼執行模式請直接使用 git pull 更新，無需覆蓋執行檔。"}
+        if sys.platform != "win32":
+            return {"ok": False, "error": "一鍵自動覆蓋僅支援 Windows 執行檔版本。"}
+        url = str(self.update.get("asset_url") or "")
+        if not url:
+            return {"ok": False, "error": "這個 release 沒有可套用的 zip 更新檔"}
+
+        stage_dir = Path(tempfile.mkdtemp(prefix="lph_upd_"))
+        zip_path = stage_dir / "update.zip"
+        try:
+            self.log(f"開始下載並驗證更新檔（v{self.update.get('latest') or '?'}）…")
+            request = urllib.request.Request(url, headers={"User-Agent": "LowPriceHunter-Updater/1.0"})
+            with urllib.request.urlopen(request, timeout=180) as response:
+                data = response.read(200 * 1024 * 1024 + 1)
+            if len(data) > 200 * 1024 * 1024:
+                raise UpdateError("更新檔超過 200MB")
+            zip_path.write_bytes(data)
+            new_app_dir = extract_update_package(zip_path, stage_dir / "extracted")
+            # 解壓驗證通過即可先刪 zip，節省空間
+            zip_path.unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            shutil.rmtree(stage_dir, ignore_errors=True)
+            self.log(f"自動套用更新失敗：{exc}")
+            return {"ok": False, "error": str(exc)}
+
+        # 先溫和通知監控停止，讓 SQLite 寫入完成
+        if self.monitoring:
+            self.stop_event.set()
+            if self.monitor:
+                self.monitor.join(timeout=5)
+
+        app_dir = Path(sys.executable).resolve().parent
+        script_path = stage_dir / "apply_update.ps1"
+        script_text = build_apply_update_script(
+            app_dir=app_dir,
+            new_app_dir=new_app_dir,
+            stage_dir=stage_dir,
+            pid=os.getpid(),
+            desktop_dir=_desktop_dir(),
+        )
+        script_path.write_text(script_text, encoding="utf-8-sig")
+
+        flags = (
+            getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                str(script_path),
+            ],
+            cwd=str(stage_dir),
+            close_fds=True,
+            creationflags=flags,
+        )
+        self.log(f"正在自動覆蓋更新至 v{self.update.get('latest') or '?'} 並重新啟動…")
+        threading.Timer(0.8, lambda: os._exit(0)).start()
+        return {"ok": True, "restarting": True, "version": str(self.update.get("latest") or "")}
+
     def logout(self) -> dict:
         """停止監控並清除本機 Facebook 登入 session。"""
         if self.login.get("status") == "waiting":
@@ -1467,6 +1542,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(APP.open_update_page())
             elif path == "/api/update/download":
                 self._json(APP.download_update())
+            elif path == "/api/update/apply":
+                self._json(APP.apply_update())
             elif path == "/api/open-app-passwords":
                 webbrowser.open("https://myaccount.google.com/apppasswords")
                 self._json({"ok": True})
