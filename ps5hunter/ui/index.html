@@ -7,67 +7,302 @@
 <title>Low Price Hunter</title>
 <link rel="icon" type="image/png" href="/assets/logo.png">
 <style>
-  :root{--bg:#f3f4f6;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--brand:#2563eb;--ok:#059669;--warn:#d97706;--bad:#dc2626;}
+  :root{
+    --bg:#f1f5f9;
+    --bg-glow:radial-gradient(900px 420px at 15% -10%, rgba(59,130,246,.14), transparent 60%), radial-gradient(700px 360px at 90% -5%, rgba(16,185,129,.10), transparent 55%);
+    --card:#ffffff;
+    --card-soft:#f8fafc;
+    --card-hover:#f1f5f9;
+    --ink:#0f172a;
+    --ink-2:#334155;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --line-strong:#cbd5e1;
+    --input-bg:#ffffff;
+    --brand:#2563eb;
+    --brand-2:#4f46e5;
+    --brand-soft:rgba(37,99,235,.10);
+    --ok:#059669;
+    --ok-bg:#d1fae5;
+    --ok-ink:#065f46;
+    --warn:#d97706;
+    --warn-bg:#fef3c7;
+    --warn-ink:#92400e;
+    --bad:#dc2626;
+    --bad-bg:#fee2e2;
+    --bad-ink:#991b1b;
+    --chip-bg:#e2e8f0;
+    --chip-ink:#334155;
+    --shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08);
+    --shadow-lg:0 12px 32px -12px rgba(37,99,235,.22);
+    --code-bg:#0b1220;
+    --code-ink:#cbd5e1;
+  }
+  :root[data-theme="dark"]{
+    --bg:#090d16;
+    --bg-glow:radial-gradient(900px 420px at 15% -10%, rgba(59,130,246,.18), transparent 60%), radial-gradient(700px 360px at 90% -5%, rgba(16,185,129,.12), transparent 55%);
+    --card:#111827;
+    --card-soft:#162033;
+    --card-hover:#1e293b;
+    --ink:#f1f5f9;
+    --ink-2:#cbd5e1;
+    --muted:#94a3b8;
+    --line:rgba(148,163,184,.16);
+    --line-strong:rgba(148,163,184,.28);
+    --input-bg:#0b1220;
+    --brand:#3b82f6;
+    --brand-2:#6366f1;
+    --brand-soft:rgba(59,130,246,.18);
+    --ok:#10b981;
+    --ok-bg:rgba(16,185,129,.16);
+    --ok-ink:#6ee7b7;
+    --warn:#f59e0b;
+    --warn-bg:rgba(245,158,11,.16);
+    --warn-ink:#fcd34d;
+    --bad:#ef4444;
+    --bad-bg:rgba(239,68,68,.16);
+    --bad-ink:#fca5a5;
+    --chip-bg:#1e293b;
+    --chip-ink:#cbd5e1;
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 28px -12px rgba(0,0,0,.55);
+    --shadow-lg:0 12px 32px -12px rgba(59,130,246,.35);
+    --code-bg:#050810;
+    --code-ink:#c7d2fe;
+  }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;}
-  .wrap{max-width:920px;margin:0 auto;padding:28px 18px 60px;}
-  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background-color:var(--bg);
+    background-image:var(--bg-glow);
+    background-attachment:fixed;
+    color:var(--ink);
+    font-family:-apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;
+    line-height:1.5;
+    transition:background-color .2s ease,color .2s ease;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:99px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+  .wrap{max-width:980px;margin:0 auto;padding:24px 20px 64px;}
+
+  /* Hero Header */
+  header{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    margin-bottom:16px;padding:16px 20px;
+    background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);
+  }
   .brand{display:flex;align-items:center;gap:14px;}
-  .brand img{width:52px;height:52px;border-radius:13px;object-fit:cover;background:#0b0f19;box-shadow:0 2px 8px rgba(0,0,0,.18);}
-  h1{font-size:24px;margin:0;letter-spacing:-.01em;}
-  .sub{color:var(--muted);font-size:13px;margin:4px 0 20px;}
+  .brand img{
+    width:52px;height:52px;border-radius:14px;object-fit:cover;background:#0b0f19;
+    box-shadow:0 6px 18px rgba(37,99,235,.22);border:1px solid rgba(255,255,255,.12);
+  }
+  .title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:800;}
+  .ver-badge{
+    font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+    background:var(--brand-soft);color:var(--brand);border:1px solid rgba(59,130,246,.22);
+  }
+  .sub{color:var(--muted);font-size:13px;margin:3px 0 0;}
+  .header-tools{display:flex;align-items:center;gap:8px;}
+  .theme-switch{
+    display:inline-flex;background:var(--card-soft);border:1px solid var(--line);
+    border-radius:11px;padding:3px;gap:2px;
+  }
+  .theme-btn{
+    border:none;background:transparent;color:var(--muted);font-size:12px;font-weight:600;
+    padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .15s;
+  }
+  .theme-btn:hover{color:var(--ink)}
+  .theme-btn.active{background:var(--card);color:var(--brand);box-shadow:0 1px 4px rgba(0,0,0,.12);}
+
+  /* Status Chips */
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
-  .chip{font-size:12px;padding:6px 10px;border-radius:99px;background:#e5e7eb;color:#374151;}
-  .chip.ok{background:#d1fae5;color:#065f46}.chip.bad{background:#fee2e2;color:#991b1b}.chip.warn{background:#fef3c7;color:#92400e}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
-  .step{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
-  .num{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
-  .step h2{font-size:16px;margin:0;}
-  label{display:block;font-size:13px;color:#374151;margin:10px 0 4px;font-weight:600;}
-  input,textarea,select{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:9px;font-size:14px;font-family:inherit;background:#fff;}
-  textarea{min-height:90px;resize:vertical;}
-  .row{display:flex;gap:10px;flex-wrap:wrap;}
-  .row>div{flex:1;min-width:140px;}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-radius:9px;border:1px solid transparent;background:var(--brand);color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
-  .btn:hover{filter:brightness(.95)}
-  .btn.ghost{background:#fff;color:#374151;border-color:#d1d5db;}
-  .btn.good{background:var(--ok)}.btn.danger{background:var(--bad)}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .hint{font-size:12px;color:var(--muted);margin-top:4px;}
-  .list{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;}
-  .list label{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:6px 0;font-size:13px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:600;padding:6px 12px;border-radius:99px;
+    background:var(--chip-bg);color:var(--chip-ink);border:1px solid var(--line);
+  }
+  .chip.ok{background:var(--ok-bg);color:var(--ok-ink);border-color:rgba(16,185,129,.25)}
+  .chip.bad{background:var(--bad-bg);color:var(--bad-ink);border-color:rgba(239,68,68,.25)}
+  .chip.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:rgba(245,158,11,.25)}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;}
+  .chip.ok .dot{animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.85)}}
+
+  /* Cards */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px 22px;margin-bottom:16px;box-shadow:var(--shadow);
+    transition:border-color .18s ease, box-shadow .18s ease;
+  }
+  .card:hover{border-color:var(--line-strong)}
+  .card.hero-card{
+    background:linear-gradient(135deg, var(--card) 0%, var(--card-soft) 100%);
+    border-color:rgba(59,130,246,.22);
+  }
+  .step{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .step-left{display:flex;align-items:center;gap:10px;}
+  .num{
+    width:30px;height:30px;border-radius:10px;
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;
+    box-shadow:0 4px 10px rgba(37,99,235,.28);flex-shrink:0;
+  }
+  .step h2{font-size:16px;margin:0;font-weight:700;letter-spacing:-.01em;}
+  h3{font-size:14px;margin:14px 0 6px;color:var(--ink);font-weight:700;}
+
+  /* KPI strip */
+  .kpi-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 4px;
+  }
+  @media(max-width:680px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+  .kpi{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  }
+  .kpi-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+  .kpi-val{font-size:20px;font-weight:800;margin-top:3px;color:var(--ink);letter-spacing:-.02em;}
+  .kpi-val.accent{color:var(--ok)}
+  .kpi-val.brand{color:var(--brand)}
+
+  /* Inputs & Buttons */
+  label{display:block;font-size:13px;color:var(--ink-2);margin:10px 0 5px;font-weight:600;}
+  input,textarea,select{
+    width:100%;padding:10px 12px;border:1px solid var(--line-strong);border-radius:10px;
+    font-size:14px;font-family:inherit;background:var(--input-bg);color:var(--ink);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{
+    outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft);
+  }
+  textarea{min-height:88px;resize:vertical;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;}
+  .row>div{flex:1;min-width:150px;}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:9px 16px;border-radius:10px;border:1px solid transparent;
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;
+    font-size:13.5px;font-weight:600;cursor:pointer;
+    transition:transform .12s ease, filter .15s ease, box-shadow .15s ease;
+    text-decoration:none;
+  }
+  .btn:hover{filter:brightness(1.06);box-shadow:0 4px 12px rgba(37,99,235,.24)}
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:var(--card-soft);color:var(--ink-2);border-color:var(--line-strong);box-shadow:none;}
+  .btn.ghost:hover{background:var(--card-hover);color:var(--ink);filter:none;box-shadow:none;}
+  .btn.good{background:linear-gradient(135deg,#059669,#10b981);box-shadow:0 4px 12px rgba(16,185,129,.22)}
+  .btn.danger{background:linear-gradient(135deg,#dc2626,#ef4444);box-shadow:0 4px 12px rgba(239,68,68,.22)}
+  .btn.sm{padding:5px 10px;font-size:12px;border-radius:8px;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:5px;}
+  .list{
+    max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:12px;
+    padding:8px 10px;margin-top:8px;background:var(--card-soft);
+  }
+  .list label{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:6px 0;font-size:13px;color:var(--ink-2);}
   .list input{width:auto;margin-top:3px;}
-  .rule{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fafafa;}
-  .rule .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
-  .rule .top input{font-weight:700;flex:1;margin-right:10px;}
-  .inline{display:flex;gap:18px;align-items:center;flex-wrap:wrap;}
-  .inline label{display:flex;gap:6px;align-items:center;font-weight:500;margin:0;}
-  .inline input[type=radio]{width:auto;}
+
+  /* Rules */
+  .preset-bar{
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+    padding:10px 12px;border-radius:12px;background:var(--card-soft);
+    border:1px dashed var(--line-strong);margin-bottom:12px;
+  }
+  .preset-bar select{flex:1;min-width:220px;}
+  .rule{
+    border:1px solid var(--line);border-left:4px solid var(--brand);
+    border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--card-soft);
+  }
+  .rule .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px;}
+  .rule .top input{font-weight:700;flex:1;}
+  .inline{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:4px;}
+  .inline label{display:flex;gap:7px;align-items:center;font-weight:500;margin:0;cursor:pointer;}
+  .inline input[type=radio],.inline input[type=checkbox]{width:auto;cursor:pointer;}
+
+  /* Matrix */
   .matrix{width:100%;border-collapse:collapse;font-size:13px;}
-  .matrix th,.matrix td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left;vertical-align:middle;}
+  .matrix th,.matrix td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;vertical-align:middle;}
   .matrix th{color:var(--muted);font-weight:600;font-size:12px;}
   .matrix td input{width:auto;}
-  .matrix .gname{max-width:340px;font-weight:600;color:#374151;}
-  .del{background:none;border:none;color:var(--bad);cursor:pointer;font-size:13px;}
-  pre{background:#0b1220;color:#c7d2fe;border-radius:10px;padding:14px;font-size:12px;line-height:1.6;max-height:260px;overflow:auto;white-space:pre-wrap;}
-  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
-  .status-line{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px;}
+  .matrix .gname{max-width:340px;font-weight:600;color:var(--ink-2);}
+  .del{background:none;border:none;color:var(--bad);cursor:pointer;font-size:13px;font-weight:600;}
+  .del:hover{text-decoration:underline}
+
+  /* Dashboard tabs & deal cards */
+  .seg-tabs{
+    display:inline-flex;background:var(--card-soft);border:1px solid var(--line);
+    border-radius:11px;padding:3px;gap:4px;
+  }
+  .seg-tab{
+    border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;
+    padding:7px 14px;border-radius:8px;cursor:pointer;transition:all .15s;
+  }
+  .seg-tab.active{background:var(--card);color:var(--brand);box-shadow:0 1px 4px rgba(0,0,0,.10);}
+  .feed-list{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow:auto;padding-right:2px;}
+  .feed-item{
+    display:flex;gap:14px;align-items:flex-start;
+    padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card-soft);
+    transition:border-color .15s, background .15s;
+  }
+  .feed-item:hover{border-color:var(--line-strong);background:var(--card-hover)}
+  .feed-thumb{
+    width:72px;height:72px;border-radius:10px;object-fit:cover;flex-shrink:0;
+    background:var(--card);border:1px solid var(--line);
+  }
+  .feed-thumb-ph{
+    width:72px;height:72px;border-radius:10px;flex-shrink:0;
+    background:var(--brand-soft);color:var(--brand);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:24px;
+  }
+  .feed-main{flex:1;min-width:0;}
+  .feed-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+  .price-tag{font-size:16px;font-weight:800;color:var(--ok);}
+  .pill{
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;
+    background:var(--brand-soft);color:var(--brand);
+  }
+  .pill.reason{background:var(--warn-bg);color:var(--warn-ink);}
+  .pill.status-done{background:var(--ok-bg);color:var(--ok-ink);}
+  .pill.status-fp{background:var(--bad-bg);color:var(--bad-ink);}
+  .feed-meta{font-size:12px;color:var(--muted);margin-bottom:4px;}
+  .feed-text{font-size:13px;color:var(--ink-2);line-height:1.5;word-break:break-word;}
+  .feed-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+
+  /* Logs & tester */
+  pre{
+    background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:14px;
+    font-size:12px;line-height:1.6;max-height:260px;overflow:auto;white-space:pre-wrap;
+    border:1px solid var(--line);
+  }
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+  .status-line{font-size:13px;color:var(--muted);min-height:18px;}
   .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
-.test-result{display:block;margin:0;padding:0;background:transparent;color:#111827}
-.test-block{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:8px 0;background:#fff}
-.test-head{font-weight:700;color:#111827;margin-bottom:8px}
-.test-body{white-space:normal;line-height:1.8;background:#f9fafb;border-radius:6px;padding:10px;font-size:13px;color:#1f2937}
-.test-meta{font-size:12px;color:#6b7280;margin-top:8px}
-.gates{margin:8px 0 0 18px;padding:0;font-size:12px}
-.gates li{margin:2px 0}
-.gate-ok{color:#166534}
-.gate-bad{color:#991b1b}
-.hl-keyword{background:#fef08a;color:#111827;padding:0 1px;border-radius:2px}
-.hl-require{background:#bbf7d0;color:#111827;padding:0 1px;border-radius:2px}
-.hl-price{background:#bfdbfe;color:#111827;padding:0 1px;border-radius:2px}
-.hl-exclude{background:#fecaca;color:#111827;padding:0 1px;border-radius:2px}
-.cover-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
-.cover-btn{font-size:16px;padding:14px 22px}
+  .test-result{display:block;margin:10px 0 0;padding:0;background:transparent;color:var(--ink)}
+  .test-block{border:1px solid var(--line);border-radius:12px;padding:14px;margin:8px 0;background:var(--card-soft)}
+  .test-head{font-weight:700;color:var(--ink);margin-bottom:8px}
+  .test-body{white-space:normal;line-height:1.8;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;color:var(--ink-2)}
+  .test-meta{font-size:12px;color:var(--muted);margin-top:8px}
+  .gates{margin:8px 0 0 18px;padding:0;font-size:12px}
+  .gates li{margin:2px 0}
+  .gate-ok{color:var(--ok)}
+  .gate-bad{color:var(--bad)}
+  .hl-keyword{background:#fef08a;color:#111827;padding:0 2px;border-radius:3px}
+  .hl-require{background:#bbf7d0;color:#111827;padding:0 2px;border-radius:3px}
+  .hl-price{background:#bfdbfe;color:#111827;padding:0 2px;border-radius:3px}
+  .hl-exclude{background:#fecaca;color:#111827;padding:0 2px;border-radius:3px}
+  .cover-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+  .cover-btn{font-size:15px;padding:12px 20px;border-radius:12px;}
+  .cmd-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;
+    margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--card-soft);border:1px solid var(--line);
+    font-size:12.5px;color:var(--ink-2);
+  }
+  .cmd-grid code{
+    background:var(--brand-soft);color:var(--brand);padding:1px 6px;border-radius:5px;font-weight:700;
+  }
+  hr.sep{border:none;border-top:1px solid var(--line);margin:16px 0;}
 </style>
 </head>
 <body>
@@ -76,35 +311,55 @@
     <div class="brand">
       <img src="/assets/logo.png" alt="Low Price Hunter">
       <div>
-        <h1>Low Price Hunter</h1>
-        <div class="sub">設定一次，之後自動掃描你加入的Facebook買賣社團，符合條件就寄 Email。</div>
+        <div class="title-row">
+          <h1>Low Price Hunter</h1>
+          <span class="ver-badge" id="hdr-version">v1.4.0</span>
+        </div>
+        <div class="sub">自動高速監控 Facebook 買賣社團，智慧過濾雜訊，好價一秒即時推播。</div>
+      </div>
+    </div>
+    <div class="header-tools">
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" class="theme-btn" data-theme-val="system" id="th-system">跟隨系統</button>
+        <button type="button" class="theme-btn" data-theme-val="light" id="th-light">淺色</button>
+        <button type="button" class="theme-btn" data-theme-val="dark" id="th-dark">深色</button>
       </div>
     </div>
   </header>
 
   <div class="chips">
-    <span class="chip" id="chip-fb">FB：未登入</span>
-    <span class="chip" id="chip-mon">監控：停止</span>
-    <span class="chip" id="chip-bot">機器人信箱：檢查中</span>
+    <span class="chip" id="chip-fb"><span class="dot"></span>FB：未登入</span>
+    <span class="chip" id="chip-mon"><span class="dot"></span>監控：停止</span>
+    <span class="chip" id="chip-bot"><span class="dot"></span>機器人信箱：檢查中</span>
+    <span class="chip" id="chip-quiet" hidden><span class="dot"></span>勿擾模式</span>
   </div>
 
   <!-- Cover -->
-  <div class="card cover" id="cover-card">
-    <div class="step"><div class="num">▶</div><h2>監控控制</h2></div>
-    <p class="hint">平常只需要這幾個按鈕；第一次使用請按「設定」完成登入、社團、物品與 Email。</p>
-    <div class="cover-actions">
-      <button class="btn good cover-btn" id="btn-start-main">開始監控</button>
-      <button class="btn danger cover-btn" id="btn-stop-main">停止監控</button>
-      <button class="btn ghost cover-btn" id="btn-export-logs">一鍵輸出日誌</button>
-      <button class="btn ghost cover-btn" id="btn-open-settings">設定</button>
+  <div class="card hero-card cover" id="cover-card">
+    <div class="step">
+      <div class="step-left"><div class="num">▶</div><h2>監控控制中心</h2></div>
+      <span class="hint" id="cover-status" style="margin:0;font-weight:600;">目前停止</span>
     </div>
-    <p class="hint" id="cover-status">目前停止</p>
+    <p class="hint" style="margin-top:0">平常只需要這幾個按鈕；關閉視窗會自動縮小至右下角系統匣繼續在背景運作。首次使用請點「設定」。</p>
+    <div class="cover-actions">
+      <button class="btn good cover-btn" id="btn-start-main">▶ 開始監控</button>
+      <button class="btn danger cover-btn" id="btn-stop-main">■ 停止監控</button>
+      <button class="btn ghost cover-btn" id="btn-open-settings">⚙ 設定</button>
+      <button class="btn ghost cover-btn" id="btn-export-logs">📦 一鍵輸出日誌</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">今日掃描輪數</div><div class="kpi-val brand" id="kpi-cycles">0</div></div>
+      <div class="kpi"><div class="kpi-label">今日命中好價</div><div class="kpi-val accent" id="kpi-deals">0</div></div>
+      <div class="kpi"><div class="kpi-label">今日攔截雜訊</div><div class="kpi-val" id="kpi-blocked">0</div></div>
+      <div class="kpi"><div class="kpi-label">上次掃描耗時</div><div class="kpi-val" id="kpi-sec">--</div></div>
+    </div>
     <p class="hint" id="export-status"></p>
   </div>
 
-  <div class="card" id="update-banner" hidden style="border:2px solid #2563eb;">
-    <div class="step"><div class="num">⬆</div><h2>有新版本可用</h2></div>
-    <p id="update-message" class="hint"></p>
+  <!-- Update Banner -->
+  <div class="card" id="update-banner" hidden style="border:2px solid var(--brand);">
+    <div class="step"><div class="step-left"><div class="num">⬆</div><h2>有新版本可用</h2></div></div>
+    <p id="update-message" class="hint" style="font-size:14px;color:var(--ink);font-weight:600;"></p>
     <div class="actions">
       <button class="btn good" id="btn-update-apply">一鍵自動更新並重啟</button>
       <button class="btn ghost" id="btn-update-download">僅下載更新檔</button>
@@ -114,9 +369,26 @@
     <p class="hint" id="update-status"></p>
   </div>
 
+  <!-- Dashboard: Deal History & Blocked Audit Log -->
+  <div class="card" id="dashboard-card">
+    <div class="step">
+      <div class="step-left"><div class="num">📊</div><h2>命中紀錄與被攔截貼文稽核</h2></div>
+      <div class="actions" style="margin:0;">
+        <div class="seg-tabs">
+          <button type="button" class="seg-tab active" id="tab-deals">🔥 最近命中紀錄</button>
+          <button type="button" class="seg-tab" id="tab-blocked">🛡️ 最近被攔截貼文</button>
+        </div>
+        <button type="button" class="btn ghost sm" id="btn-refresh-history">重新整理</button>
+      </div>
+    </div>
+    <p class="hint" id="dashboard-hint" style="margin-top:0">檢視所有已命中的甜甜價貼文，可直接標記「已私訊」、回報誤報，或一鍵封鎖賣家。</p>
+    <div class="feed-list" id="feed-deals"><div class="hint">尚無命中紀錄；開始監控後命中的低價貼文會顯示在這裡。</div></div>
+    <div class="feed-list" id="feed-blocked" hidden><div class="hint">尚無被攔截的貼文紀錄。</div></div>
+  </div>
+
   <div id="settings-panel" hidden>
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div class="step" style="margin:0"><div class="num">⚙</div><h2>設定</h2></div>
+      <div class="step" style="margin:0"><div class="step-left"><div class="num">⚙</div><h2>完整設定</h2></div></div>
       <div class="actions" style="margin:0">
         <button class="btn ghost" id="btn-export-config">匯出設定</button>
         <button class="btn ghost" id="btn-import-config">匯入設定</button>
@@ -131,7 +403,7 @@
 
   <!-- Step 1 -->
   <div class="card">
-    <div class="step"><div class="num">1</div><h2>登入 Facebook</h2></div>
+    <div class="step"><div class="step-left"><div class="num">1</div><h2>登入 Facebook</h2></div></div>
     <p class="hint">按下面的按鈕會開啟一個 Chrome 視窗，請在裡面登入要跑監控的帳號。登入成功後這個視窗會自動關閉。</p>
     <div class="actions">
       <button class="btn" id="btn-login">開啟瀏覽器登入</button>
@@ -142,7 +414,7 @@
 
   <!-- Step 2 -->
   <div class="card">
-    <div class="step"><div class="num">2</div><h2>要監控的社團</h2></div>
+    <div class="step"><div class="step-left"><div class="num">2</div><h2>要監控的社團</h2></div></div>
     <div class="actions">
       <button class="btn ghost" id="btn-discover">抓取我已加入的社團</button>
       <span class="status-line" id="discover-status"></span>
@@ -161,12 +433,30 @@
 
   <!-- Step 3 -->
   <div class="card">
-    <div class="step"><div class="num">3</div><h2>監控物品與價格條件</h2></div>
-    <div id="rules"><div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」開始。</div></div>
+    <div class="step"><div class="step-left"><div class="num">3</div><h2>監控物品與價格條件</h2></div></div>
+    <div class="preset-bar">
+      <span style="font-size:13px;font-weight:700;color:var(--ink-2);">⚡ 商品規則一鍵範本庫</span>
+      <select id="preset-select">
+        <option value="">選擇常見二手商品範本…</option>
+        <option value="ps5">PS5 主機（非 Pro，排除遊戲片／手把／Pro）</option>
+        <option value="ps5_pro">PS5 Pro 主機</option>
+        <option value="switch_oled">Nintendo Switch OLED 主機</option>
+        <option value="iphone">iPhone 15 / 16（非 Pro，排除殼貼／零件機）</option>
+        <option value="rtx">RTX 4070 / 5070 顯示卡（排除整機／筆電／礦卡）</option>
+        <option value="sony_a7c2">Sony A7C II 單眼相機（排除單賣鏡頭／配件）</option>
+      </select>
+      <button type="button" class="btn sm" id="btn-apply-preset">＋ 套用範本</button>
+    </div>
+    <div id="rules"><div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」或從上方範本庫一鍵套用。</div></div>
     <button class="btn ghost" id="btn-add-rule">＋ 新增物品</button>
 
+    <hr class="sep">
+    <label>🚫 賣家黑名單（一行一位或逗號分隔；命中該賣家貼文將自動略過）</label>
+    <textarea id="blocked-sellers" style="min-height:64px" placeholder="例如：XX電玩批發&#10;水貨商家A"></textarea>
+    <p class="hint">支援不分大小寫部分比對；也可直接從封面「最近命中紀錄」點「封鎖賣家」，或用手機遠端指令 <code>/block 賣家名</code> 加入。</p>
+
     <details style="margin-top:14px;">
-      <summary style="cursor:pointer;font-size:13px;color:#2563eb;font-weight:600;">這些欄位怎麼用？（點開看說明）</summary>
+      <summary style="cursor:pointer;font-size:13px;color:var(--brand);font-weight:600;">這些欄位怎麼用？（點開看說明）</summary>
       <div class="hint" style="margin-top:10px;line-height:1.9;">
         <b>關鍵字</b>：產品名稱，任何一個出現就會進入判斷（純英文自動詞界比對）。<br>
         <b>必須包含</b>：產品的類型／規格字，必須出現在主體區（不含相容性說明與 #hashtag）。<br>
@@ -182,21 +472,21 @@
 
   <!-- Step 3b -->
   <div class="card">
-    <div class="step"><div class="num">3</div><h2>各社團套用哪些規則</h2></div>
+    <div class="step"><div class="step-left"><div class="num">3</div><h2>各社團套用哪些規則</h2></div></div>
     <p class="hint">勾選每個社團要套用的物品。全部不勾＝這個社團不監控。</p>
     <div id="matrix"><div class="hint">先在上面選社團、新增規則。</div></div>
   </div>
 
   <!-- Rule tester -->
-  <div class="card">
-    <div class="step"><div class="num">3</div><h2>規則測試器</h2></div>
+  <div class="card" id="tester-card">
+    <div class="step"><div class="step-left"><div class="num">3</div><h2>規則測試器</h2></div></div>
     <p class="hint">貼一段貼文，看看每條規則會不會命中、卡在哪一步（不會送出、不會寄信）。</p>
     <div class="actions">
       <input id="test-url" placeholder="或貼上 Facebook 貼文／社團網址，自動抓取…" style="flex:1;min-width:260px">
       <button class="btn ghost" id="btn-fetch-post">抓取貼文</button>
       <span class="status-line" id="fetch-status"></span>
     </div>
-    <textarea id="test-text" placeholder="貼上貼文內容，例如：售 iPhone 15 128G 15000 台北面交"></textarea>
+    <textarea id="test-text" placeholder="貼上貼文內容，例如：售 iPhone 15 128G 15000 台北面交" style="margin-top:8px"></textarea>
     <div class="actions">
       <button class="btn" id="btn-test-rule">測試</button>
       <span class="status-line" id="test-status"></span>
@@ -206,7 +496,7 @@
 
   <!-- Step 4 -->
   <div class="card">
-    <div class="step"><div class="num">4</div><h2>Email 通知</h2></div>
+    <div class="step"><div class="step-left"><div class="num">4</div><h2>Email 通知</h2></div></div>
     <h3 style="margin-top:4px;">機器人信箱（寄件者）</h3>
     <div class="row">
       <div><label>機器人 Gmail</label><input id="bot-user" placeholder="your-bot@gmail.com"></div>
@@ -219,7 +509,7 @@
       <span class="status-line" id="bot-status"></span>
     </div>
     <p class="hint">登入機器人 Google → 開啟兩步驟驗證 → 建立應用程式密碼（選「其他」）→ 貼回這裡。程式不會代替你登入 Google。</p>
-    <hr style="border:none;border-top:1px solid #eef0f3;margin:16px 0;">
+    <hr class="sep">
     <label>要接收通知的 Email（多個請用逗號或換行分隔）</label>
     <textarea id="email-to" placeholder="you@gmail.com&#10;friend@gmail.com"></textarea>
     <p class="hint">會逐一寄送，收件者不會看到彼此的信箱；最多 20 個。</p>
@@ -232,14 +522,33 @@
 
   <!-- Channels -->
   <div class="card">
-    <div class="step"><div class="num">4</div><h2>通知渠道</h2></div>
-    <p class="hint">可複選；Email 以外需要先設定憑證。憑證會用 Windows DPAPI 加密。</p>
+    <div class="step"><div class="step-left"><div class="num">4</div><h2>通知渠道（Discord／Telegram／Email）</h2></div></div>
+    <p class="hint">可複選；Email 以外需要先設定憑證。所有憑證均以 Windows DPAPI 本機加密儲存。</p>
     <div class="inline">
       <label><input type="checkbox" id="ch-email" checked> Email</label>
       <label><input type="checkbox" id="ch-telegram"> Telegram</label>
       <label><input type="checkbox" id="ch-discord"> Discord</label>
     </div>
-    <h3 style="margin-top:16px">Telegram</h3>
+    <h3>Discord（推薦：手機秒彈推播、帶商品第一張實拍縮圖與直達連結）</h3>
+    <label>Webhook URL</label>
+    <input id="dc-webhook" type="password" placeholder="https://discord.com/api/webhooks/...（留空表示不變）">
+    <p class="hint">在 Discord 私人頻道點「編輯頻道 → 整合 → Webhook → 新 Webhook → 複製網址」貼上即可；可單獨勾選 Discord，免設 Gmail。</p>
+    <div class="actions">
+      <button class="btn ghost" id="btn-test-dc">測試 Discord</button>
+      <span class="status-line" id="dc-status"></span>
+    </div>
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--brand);font-weight:600;">進階：Discord 雙向遠端指令設定（選填，改預算／暫停／封鎖賣家用）</summary>
+      <div class="row" style="margin-top:8px;">
+        <div><label>Discord Bot Token</label><input id="dc-bot-token" type="password" placeholder="留空表示不變"></div>
+        <div><label>監聽頻道 ID</label><input id="dc-channel-id" placeholder="例如 123456789012345678"></div>
+        <div><label>允許的使用者 ID（選填）</label><input id="dc-allowed-uid" placeholder="留空代表該頻道所有人皆可"></div>
+      </div>
+      <p class="hint" id="dc-bot-status">在 Discord Developer Portal 建立 Bot 並開啟 Message Content Intent 邀請進私人頻道即可用 /status、/price 等指令遠端控制。</p>
+    </details>
+
+    <hr class="sep">
+    <h3>Telegram（推播＋內建支援遠端指令）</h3>
     <div class="row">
       <div><label>Bot Token</label><input id="tg-token" type="password" placeholder="留空表示不變"></div>
       <div><label>Chat ID</label><input id="tg-chat" placeholder="例如 123456789"></div>
@@ -248,15 +557,7 @@
       <button class="btn ghost" id="btn-test-tg">測試 Telegram</button>
       <span class="status-line" id="tg-status"></span>
     </div>
-    <h3 style="margin-top:16px">Discord（推薦：手機秒彈推播、支援彩色卡片直達連結）</h3>
-    <label>Webhook URL</label>
-    <input id="dc-webhook" type="password" placeholder="https://discord.com/api/webhooks/...（留空表示不變）">
-    <p class="hint">設定方式：在你的 Discord 私人頻道點「編輯頻道 → 整合 → Webhook → 新 Webhook → 複製 Webhook 網址」貼上即可；可單獨勾選 Discord，免設 Gmail。</p>
-    <div class="actions">
-      <button class="btn ghost" id="btn-test-dc">測試 Discord</button>
-      <span class="status-line" id="dc-status"></span>
-    </div>
-    <div class="actions" style="margin-top:12px">
+    <div class="actions" style="margin-top:14px">
       <button class="btn" id="btn-save-channels">儲存渠道設定</button>
       <span class="status-line" id="ch-status"></span>
     </div>
@@ -264,7 +565,7 @@
 
   <!-- PTT price survey（暫時隱藏；PTT 樣本量不足，避免誤導） -->
   <div class="card" id="price-survey-card" hidden>
-    <div class="step"><div class="num">📈</div><h2>PTT 二手參考價（近 7 天）</h2></div>
+    <div class="step"><div class="step-left"><div class="num">📈</div><h2>PTT 二手參考價（近 7 天）</h2></div></div>
     <p class="hint">公開 PTT Gamesale，免登入、不碰 Facebook；抓標題含物品與主機字的文章，依真實日期畫價格走勢。</p>
     <div class="row">
       <div><label>物品</label><select id="survey-rule"></select></div>
@@ -276,60 +577,119 @@
     <div id="survey-samples"></div>
   </div>
 
-  <!-- Step 5 -->
+  <!-- Step 5: Smart Schedule, Health Alerts, Desktop Notify & Remote Control -->
   <div class="card">
-    <div class="step"><div class="num">5</div><h2>掃描週期與啟動</h2></div>
+    <div class="step"><div class="step-left"><div class="num">5</div><h2>掃描週期、勿擾排程、異常警報與遠端控制</h2></div></div>
     <div class="row">
       <div>
         <label>每幾分鐘掃描一次（建議 1–2 分鐘）</label>
         <input id="interval" type="number" min="1" value="2">
-        <p class="hint">系統會常駐瀏覽器、從開掃起算週期並自動加隨機防風控抖動，命中後立即推播。</p>
+        <p class="hint">常駐瀏覽器複用＋從開掃起算週期＋隨機防風控抖動，命中立即推播。</p>
       </div>
       <div>
         <label>每次最多拉幾篇（建議 15–30）</label>
         <input id="maxposts" type="number" min="10" value="25">
-        <p class="hint">由新到舊拉，追到已看過的貼文就立刻早停換下一個社團，大幅縮短掃描時間。</p>
+        <p class="hint">追到已看過的貼文立即早停換下一個社團，大幅縮短掃描延遲。</p>
       </div>
     </div>
-    <label>通知方式</label>
-    <div class="inline">
-      <label><input type="radio" name="notify_mode" value="instant" checked> 即時寄出</label>
-      <label><input type="radio" name="notify_mode" value="digest"> 每日摘要</label>
-      <span style="font-size:13px;color:#6b7280;">摘要時間</span>
-      <input id="digest-hour" type="number" min="0" max="23" value="21" style="width:80px;">
-      <span style="font-size:13px;color:#6b7280;">點</span>
+
+    <div class="row">
+      <div>
+        <label>只看幾分鐘內的新貼文</label>
+        <input id="max-age" type="number" min="0" value="10">
+        <p class="hint">0＝不限；超過設定分鐘數的舊貼文會跳過。</p>
+      </div>
+      <div>
+        <label>通知方式</label>
+        <div class="inline" style="margin-top:8px;">
+          <label><input type="radio" name="notify_mode" value="instant" checked> 即時推播</label>
+          <label><input type="radio" name="notify_mode" value="digest"> 每日摘要</label>
+          <input id="digest-hour" type="number" min="0" max="23" value="21" style="width:70px;">
+          <span class="hint" style="margin:0">點</span>
+        </div>
+      </div>
     </div>
-    <label>開機與背景</label>
+
+    <hr class="sep">
+    <h3>🌙 勿擾時段／日夜變速排程</h3>
+    <div class="inline">
+      <label><input type="checkbox" id="quiet-enabled"> 啟用勿擾時段</label>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <div><label>開始時間（小時，0–23）</label><input id="quiet-start" type="number" min="0" max="23" value="1"></div>
+      <div><label>結束時間（小時，0–23）</label><input id="quiet-end" type="number" min="0" max="23" value="7"></div>
+      <div>
+        <label>勿擾時段行為</label>
+        <select id="quiet-mode">
+          <option value="slow">夜間降速（拉長間隔，省資源兼防風控）</option>
+          <option value="mute">夜間靜音（照常掃描並存入歷史紀錄，但不推播吵人）</option>
+          <option value="pause">夜間暫停（完全暫停掃描並釋放瀏覽器）</option>
+        </select>
+      </div>
+      <div><label>夜間降速間隔（分鐘）</label><input id="quiet-interval" type="number" min="2" value="15"></div>
+    </div>
+
+    <hr class="sep">
+    <h3>🩺 異常斷線警報、每日健康回報與桌面通知</h3>
+    <div class="inline">
+      <label><input type="checkbox" id="health-alert" checked> Facebook 登入失效／驗證碼／連續失敗時主動推播警報</label>
+      <label><input type="checkbox" id="desktop-notify" checked> 命中時彈出 Windows 右下角系統匣氣泡通知（點擊直開貼文）</label>
+    </div>
+    <div class="inline" style="margin-top:8px;">
+      <label><input type="checkbox" id="daily-heartbeat"> 每日定時發送平安健康回報</label>
+      <span class="hint" style="margin:0">時間</span>
+      <input id="daily-heartbeat-hour" type="number" min="0" max="23" value="9" style="width:74px;">
+      <span class="hint" style="margin:0">點</span>
+      <button type="button" class="btn ghost sm" id="btn-test-alert">測試警報與桌面氣泡</button>
+      <span class="status-line" id="alert-test-status"></span>
+    </div>
+
+    <hr class="sep">
+    <h3>📱 手機遠端控制（Telegram Bot ／ Discord Bot）</h3>
+    <div class="inline">
+      <label><input type="checkbox" id="remote-enabled"> 啟用遠端指令監聽（每 8 秒檢查一次，僅接受您本人設定的頻道／Chat ID）</label>
+    </div>
+    <div class="cmd-grid">
+      <div><code>/status</code> 查看監控與今日統計</div>
+      <div><code>/pause</code> 暫停掃描監控</div>
+      <div><code>/resume</code> 恢復掃描監控</div>
+      <div><code>/price 11000</code> 修改第一條規則最高價</div>
+      <div><code>/price PS5 10500</code> 指定規則修改最高價</div>
+      <div><code>/block 賣家名</code> 將賣家加入黑名單</div>
+    </div>
+
+    <hr class="sep">
+    <h3>⚡ 開機與背景</h3>
     <div class="inline">
       <label><input type="checkbox" id="autostart"> 登入 Windows 後自動在背景啟動</label>
       <label><input type="checkbox" id="auto-monitor"> 啟動後自動開始監控</label>
     </div>
-    <p class="hint">自動啟動會在背景執行、不打開頁面；要調整設定再點桌面捷徑即可。</p>
-    <label>只看幾分鐘內的新貼文</label>
-    <input id="max-age" type="number" min="0" value="10">
-    <p class="hint">0＝不限；抓不到時間或超過設定分鐘數的貼文會跳過，避免通知舊文。</p>
-    <div class="actions">
-      <button class="btn" id="btn-save">儲存設定</button>
-      <button class="btn good" id="btn-start">開始監控</button>
-      <button class="btn danger" id="btn-stop">停止監控</button>
+    <p class="hint">自動啟動會在背景執行、不打開頁面；關閉視窗時也會自動縮小至系統匣，要調整設定再雙擊系統匣圖示即可。</p>
+
+    <div class="actions" style="margin-top:14px;">
+      <button class="btn" id="btn-save">💾 儲存設定</button>
+      <button class="btn good" id="btn-start">▶ 開始監控</button>
+      <button class="btn danger" id="btn-stop">■ 停止監控</button>
       <span class="status-line" id="save-status"></span>
     </div>
     <div class="actions" style="margin-top:16px">
       <label style="margin:0">執行日誌</label>
-      <button class="btn ghost" id="btn-open-logs">打開日誌資料夾</button>
-      <button class="btn ghost" id="btn-copy-errors">複製最近錯誤</button>
+      <button class="btn ghost sm" id="btn-open-logs">打開日誌資料夾</button>
+      <button class="btn ghost sm" id="btn-copy-errors">複製最近錯誤</button>
     </div>
     <pre id="logs">（尚無日誌）</pre>
   </div>
 
   <div class="card">
-    <div class="step"><div class="num">⬆</div><h2>版本與更新</h2></div>
-    <p class="hint">目前版本 <b id="app-version">-</b>。每天會在指定時間檢查 GitHub Releases。</p>
+    <div class="step"><div class="step-left"><div class="num">⬆</div><h2>版本與更新</h2></div></div>
+    <p class="hint">目前版本 <b id="app-version">-</b>。每天會在指定時間檢查 GitHub Releases，支援一鍵自動覆蓋升級並清除舊暫存。</p>
     <div class="row">
-      <div><label>GitHub repo（owner/repo）</label><input id="update-repo" placeholder="yourname/LowPriceHunter"></div>
+      <div><label>GitHub repo（owner/repo）</label><input id="update-repo" placeholder="a2003030700/LowPriceHunter"></div>
       <div><label>每天檢查時間（小時）</label><input id="update-hour" type="number" min="0" max="23" value="9"></div>
     </div>
-    <label><input type="checkbox" id="update-enabled"> 每天自動檢查更新</label>
+    <div class="inline" style="margin-top:8px;">
+      <label><input type="checkbox" id="update-enabled"> 每天自動檢查更新</label>
+    </div>
     <div class="actions">
       <button class="btn ghost" id="btn-update-check-settings">立即檢查</button>
       <span class="status-line" id="update-settings-status"></span>
@@ -344,189 +704,41 @@ let currentLang = "zh-TW";
 const I18N = {
   en: {
     "設定": "Settings",
+    "完整設定": "Settings",
     "關閉設定": "Close settings",
     "匯出設定": "Export settings",
     "匯入設定": "Import settings",
-    "監控控制": "Monitoring",
-    "平常只需要這幾個按鈕；第一次使用請按「設定」完成登入、社團、物品與 Email。": "Use these buttons day to day. First time: open Settings to sign in and add groups, items, and email.",
+    "監控控制中心": "Monitoring Control",
     "開始監控": "Start monitoring",
     "停止監控": "Stop monitoring",
     "停止": "Stop",
     "一鍵輸出日誌": "Export logs",
     "目前停止": "Stopped",
-    "目前版本": "Current version",
-    "。每天會在指定時間檢查 GitHub Releases。": ". Checks GitHub Releases daily at the configured hour.",
     "版本與更新": "Version & updates",
     "有新版本可用": "Update available",
     "查看更新": "View update",
-    "下載更新檔": "Download update",
+    "僅下載更新檔": "Download zip only",
+    "一鍵自動更新並重啟": "One-Click Update & Restart",
     "略過此版本": "Skip this version",
     "立即檢查": "Check now",
     "每天自動檢查更新": "Check for updates daily",
     "每天檢查時間（小時）": "Daily check hour",
-    "下載中…": "Downloading…",
-    "下載失敗": "Download failed",
-    "檢查中…": "Checking…",
-    "檢查失敗": "Check failed",
-    "無法檢查": "Unable to check",
-    "無法開啟": "Unable to open",
-    "下載後解壓縮覆蓋程式即可，data 資料夾會保留。": "Unzip and overwrite the app; the data folder is kept.",
     "Email 通知": "Email notifications",
-    "機器人信箱（寄件者）": "Bot mailbox (sender)",
-    "機器人 Gmail": "Bot Gmail",
-    "應用程式密碼": "App password",
-    "儲存機器人信箱": "Save bot mailbox",
-    "清除機器人信箱": "Clear bot mailbox",
-    "寄件者使用程式內建的機器人信箱，你不需要填應用程式密碼。": "Uses the bot mailbox configured in the app; no app password needed here.",
-    "登入機器人 Google → 開啟兩步驟驗證 → 建立應用程式密碼（選「其他」）→ 貼回這裡。程式不會代替你登入 Google。": "Sign in to the bot Google account, enable 2-Step Verification, create an App Password (choose Other), and paste it here. The app never signs in to Google for you.",
-    "開啟 Google 應用程式密碼頁面": "Open Google App Passwords",
-    "寄測試信": "Send test email",
-    "要接收通知的 Email（多個請用逗號或換行分隔）": "Notification email(s), separated by commas or new lines",
-    "會逐一寄送，收件者不會看到彼此的信箱；最多 20 個。": "Sent individually; recipients cannot see each other; up to 20.",
     "登入 Facebook": "Sign in to Facebook",
     "登出 Facebook": "Sign out of Facebook",
     "開啟瀏覽器登入": "Open browser sign-in",
-    "按下面的按鈕會開啟一個 Chrome 視窗，請在裡面登入要跑監控的帳號。登入成功後這個視窗會自動關閉。": "Opens a Chrome window. Sign in with the account to monitor; the window closes automatically.",
     "要監控的社團": "Groups to monitor",
     "抓取我已加入的社團": "Fetch my groups",
-    "抓取後會用目前 Facebook 帳號的社團取代清單；切換帳號後請重新抓取。": "Fetching replaces the list with groups from the signed-in account; re-fetch after switching accounts.",
-    "只會自動勾選「名稱符合規則關鍵字」的社團（例如規則含 PS5），其餘預設不勾選。": "Only groups whose name matches a rule keyword (e.g. PS5) are pre-selected; the rest start unchecked.",
-    "搜尋社團名稱或網址…": "Search group name or URL…",
-    "手動貼上社團網址（一行一個）": "Paste group URLs (one per line)",
-    "按上面按鈕抓取，或直接在下面貼社團網址。": "Click Fetch above, or paste group URLs below.",
-    "各社團套用哪些規則": "Which rules apply to each group",
-    "勾選每個社團要套用的物品。全部不勾＝這個社團不監控。": "Choose items for each group. No selection = group not monitored.",
-    "先在上面選社團、新增規則。": "Select groups above and add a rule first.",
     "監控物品與價格條件": "Items & price rules",
-    "物品": "Item",
     "＋ 新增物品": "+ Add item",
-    "還沒有物品，按下面的「＋ 新增物品」開始。": "No items yet. Click + Add item below.",
-    "關鍵字": "Keywords",
-    "關鍵字（逗號分隔）": "Keywords (comma separated)",
-    "排除詞（逗號分隔）": "Exclude words (comma separated)",
-    "必須包含（逗號分隔，至少一個）": "Required words (comma separated, at least one)",
-    "產品的「類型字」，至少出現一個才算。用來避免只看到「平台／分類字」就通知。": "At least one product type word is required.",
-    "價格需靠近產品字（字數）": "Max distance from product word",
-    "價格和產品字最多隔幾個字；越小越嚴格（建議 30–60）。": "Max characters between price and product word; smaller is stricter (30–60 recommended).",
-    "合售／整組等字（逗號分隔）": "Bundle words (comma separated)",
-    "有這些字代表整組賣，不會被下面的「多項商品」判斷跳過。": "Bundle words allow multiple prices.",
-    "價格要靠近產品字": "Require price near product word",
-    "最低價": "Min price",
-    "最高價": "Max price",
-    "刪除": "Delete",
-    "社團": "Group",
-    "先選擇社團並新增規則。": "Select groups and add a rule first.",
-    "必須包含": "Required words",
-    "排除詞": "Exclude words",
-    "最低／最高價": "Min / max price",
-    "價格需靠近產品字": "Price must be near product word",
-    "排除多項商品清單": "Reject multi-item lists",
-    "合售／整組等字": "Bundle words",
-    "：產品名稱，任何一個出現就會進入判斷。": ": Product names; any match starts evaluation.",
-    "：產品的類型字，至少要出現一個；用來避免「平台／分類字」被當成商品。": ": Product type words; at least one is required.",
-    "：出現就跳過，例如「遊戲片、手把、徵求、已售」。": ": Skip if present, e.g. games, controller, wanted, sold.",
-    "：合理價格範圍，範圍外的價格不列入判斷。": ": Acceptable price range; prices outside are ignored.",
-    "：價格與產品字的距離上限（字數），越小越嚴格。": ": Max character distance between price and product word; smaller is stricter.",
-    "：貼文有 3 個以上價格、又沒有合售字時，視為商品清單跳過。": ": Skip posts with 3+ prices unless a bundle word is present.",
-    "：出現這些字就允許一篇貼文列多個價格。": ": These words allow multiple prices in one post.",
-    "：把一篇貼文貼到下面的「規則測試器」，它會告訴你是哪一關擋掉的。": ": Paste a post into the Rule tester to see which gate blocked it.",
-    "這些欄位怎麼用？（點開看說明）": "How do these fields work? (click to expand)",
-    "通知方式": "Notification mode",
-    "即時寄出": "Send immediately",
-    "每日摘要": "Daily digest",
-    "摘要時間": "Digest time",
-    "點": "h",
-    "通知渠道": "Channels",
-    "可複選；Email 以外需要先設定憑證。憑證會用 Windows DPAPI 加密。": "Multiple allowed; Telegram/Discord need credentials, encrypted with Windows DPAPI.",
-    "測試 Telegram": "Test Telegram",
-    "測試 Discord": "Test Discord",
-    "儲存渠道設定": "Save channel settings",
-    "測試方式": "How to test",
-    "掃描週期與啟動": "Scan interval & startup",
-    "每幾分鐘掃描一次": "Scan every (minutes)",
-    "只看幾分鐘內的新貼文": "Only posts newer than (minutes)",
-    "0＝不限；抓不到時間或超過設定分鐘數的貼文會跳過，避免通知舊文。": "0 = unlimited. Posts with unknown time or older than the limit are skipped to avoid old alerts.",
-    "每次最多拉幾篇（建議 50–100）": "Max posts per scan (50–100 recommended)",
-    "會由新到舊拉，追到上次的游標就停；不是只看前 10 篇。": "Scans newest to oldest and stops at the last cursor; not limited to the first 10.",
-    "開機與背景": "Startup & background",
-    "登入 Windows 後自動在背景啟動": "Start in background after Windows sign-in",
-    "啟動後自動開始監控": "Start monitoring on launch",
-    "自動啟動會在背景執行、不打開頁面；要調整設定再點桌面捷徑即可。": "Autostart runs in the background; open the desktop shortcut to adjust settings.",
+    "各社團套用哪些規則": "Rules per group",
+    "規則測試器": "Rule tester",
+    "測試": "Test",
     "儲存設定": "Save settings",
     "執行日誌": "Run log",
-    "打開日誌資料夾": "Open log folder",
-    "複製最近錯誤": "Copy recent errors",
-    "（尚無日誌）": "(no logs yet)",
-    "規則測試器": "Rule tester",
-    "貼一段貼文，看看每條規則會不會命中、卡在哪一步（不會送出、不會寄信）。": "Paste a post to see which rule matches and where it stops (nothing is sent).",
-    "或貼上 Facebook 貼文／社團網址，自動抓取…": "Or paste a Facebook post/group URL to fetch…",
-    "抓取貼文": "Fetch post",
-    "貼上貼文內容，例如：售 iPhone 15 128G 15000 台北面交": "Paste post text, e.g. iPhone 15 128GB 15000",
-    "測試": "Test",
-    "（尚未測試）": "(not tested)",
-    "PTT 二手參考價（近 7 天）": "PTT used price (7 days)",
-    "公開 PTT Gamesale，免登入、不碰 Facebook；抓標題含物品與主機字的文章，依真實日期畫價格走勢。": "Public PTT Gamesale; no login or Facebook. Plots real dates and prices.",
-    "尚未掃描": "Not scanned yet",
-    "掃描 PTT 近一週": "Scan PTT (last week)",
-    "FB：未登入": "FB: signed out",
-    "FB：已登入": "FB: signed in",
-    "FB：登入失敗": "FB: sign-in failed",
-    "FB：等待登入…": "FB: waiting for sign-in…",
-    "監控：停止": "Monitoring: stopped",
-    "監控中：正在掃描社團": "Monitoring: scanning groups",
-    "已儲存": "Saved",
-    "已設定": "Configured",
-    "已清除": "Cleared",
-    "已送出": "Sent",
-    "已寄出，請檢查信箱": "Sent; check your inbox",
-    "已登入": "Signed in",
-    "已登出，可以重新登入其他帳號": "Signed out; you can sign in with another account",
-    "已填入": "Filled",
-    "已複製最近錯誤": "Recent errors copied",
-    "監控已啟動": "Monitoring started",
-    "正在停止…": "Stopping…",
-    "正在登出…": "Signing out…",
-    "登入成功": "Signed in",
-    "登入已失效，請重新登入": "Sign-in expired; sign in again",
-    "等待逾時，請再試一次": "Timed out; try again",
-    "請在 Chrome 視窗完成登入…": "Complete sign-in in the Chrome window…",
-    "登入失敗": "Sign-in failed",
-    "登出失敗": "Sign-out failed",
-    "抓取失敗": "Fetch failed",
-    "抓取中…": "Fetching…",
-    "抓取中，約需 30 秒…": "Fetching; about 30 seconds…",
-    "未設定": "Not set",
-    "儲存失敗": "Save failed",
-    "清除失敗": "Clear failed",
-    "測試中…": "Testing…",
-    "測試失敗": "Test failed",
-    "啟動中…": "Starting…",
-    "啟動失敗": "Start failed",
-    "寄送中…": "Sending…",
-    "寄送失敗": "Send failed",
-    "匯入失敗": "Import failed",
-    "輸出失敗": "Export failed",
-    "複製失敗": "Copy failed",
-    "請先貼網址": "Paste a URL first",
-    "請先貼一段貼文": "Paste a post first",
-    "請先設定至少一條規則": "Add at least one rule first",
-    "請先新增物品": "Add an item first",
-    "JSON 格式錯誤": "Invalid JSON",
-    "缺少 rules 或 groups": "Missing rules or groups",
-    "匯入會覆蓋目前的社團、規則、Email 與掃描設定，確定嗎？": "Import will overwrite groups, rules, email, and scan settings. Continue?",
-    "這會停止監控並清除這台電腦上的 Facebook 登入，之後要重新登入。確定嗎？": "This stops monitoring and clears the Facebook sign-in. Continue?",
-    "這會刪除本機儲存的機器人 Gmail 與應用程式密碼，確定嗎？": "This deletes the saved bot Gmail and app password. Continue?",
-    "第一次使用：請先完成設定": "First time: complete setup first",
-    "監控中：正在掃描社團": "Monitoring: scanning groups",
-    "檢查中…": "Checking…",
-    "下載失敗": "Download failed",
-    "無法開始": "Unable to start",
-    "沒有可繪製的價格": "No prices to plot",
-    "沒有找到符合價格的貼文": "No matching prices found",
-    "目前停止": "Stopped",
-    "監控：": "Monitoring: ",
-    "機器人信箱：": "Bot mailbox: ",
-    "機器人信箱：未設定": "Bot mailbox: not set"
+    "跟隨系統": "System",
+    "淺色": "Light",
+    "深色": "Dark"
   }
 };
 
@@ -535,10 +747,7 @@ const ATTR_I18N = {
     "16 碼；留空表示不變": "16 characters; leave blank to keep",
     "例如 123456789": "e.g. 123456789",
     "搜尋社團名稱或網址…": "Search group name or URL…",
-    "留空表示不變": "Leave blank to keep",
-    "貼上貼文內容，例如：售 iPhone 15 128G 15000 台北面交": "Paste post text, e.g. iPhone 15 128GB 15000",
-    "物品名稱，例如 iPhone 15": "Item name, e.g. iPhone 15",
-    "或貼上 Facebook 貼文／社團網址，自動抓取…": "Or paste a Facebook post/group URL to fetch…"
+    "留空表示不變": "Leave blank to keep"
   }
 };
 
@@ -574,10 +783,6 @@ function translateDom(root = document.body) {
     const value = (el.getAttribute("placeholder") || "").trim();
     if (ATTR_I18N.en[value]) el.setAttribute("placeholder", ATTR_I18N.en[value]);
   });
-  root.querySelectorAll?.("[title]").forEach(el => {
-    const value = (el.getAttribute("title") || "").trim();
-    if (ATTR_I18N.en[value]) el.setAttribute("title", ATTR_I18N.en[value]);
-  });
 }
 
 function applyLanguage() {
@@ -596,10 +801,119 @@ new MutationObserver(mutations => {
 </script>
 
 <script>
-const state = { config: null, groups: [] };
+const state = { config: null, groups: [], historyTab: 'deals', theme: 'system' };
 let loginTimer = null, pollTimer = null;
 
 const CSRF = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+const RULE_PRESETS = {
+  ps5: {
+    name: 'PS5 主機（非 Pro）',
+    keywords: ['PS5', 'PlayStation 5', 'PlayStation5'],
+    require: ['主機', '光碟版', '數位版', 'Slim', '1018', '1118', '1218', '2018', '2118'],
+    exclude: ['PS5 Pro', 'Pro版', 'Pro主機', '故障機', '藍燈死機', '不開機', '空盒', '已售出', '暫售', '已保留', 'sold'],
+    accessory_exclude: ['遊戲片', '手把', '控制器', 'DualSense', '耳機', '散熱器', '充電座', 'SSD', '硬碟', '方向盤', 'PS Portal', 'PSVR', '保護殼', '面板'],
+    ignore_numbers: ['1018', '1118', '1218', '2018', '2118', '2200', '825', '1000', '2000'],
+    bundle_words: ['合售', '整組', '全套', '打包', '一起帶', '含運'],
+    price_near_keyword: true, near_distance: 60, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 5500, max_price: 11500
+  },
+  ps5_pro: {
+    name: 'PS5 Pro 主機',
+    keywords: ['PS5 Pro', 'PlayStation 5 Pro'],
+    require: ['Pro', '主機', '2TB', '7018'],
+    exclude: ['故障機', '空盒', '已售出', '暫售', '已保留', 'sold'],
+    accessory_exclude: ['遊戲片', '手把', '散熱器', '直立架', '外接光碟機', '保護殼'],
+    ignore_numbers: ['7018', '2000', '2024', '2025'],
+    bundle_words: ['合售', '整組', '全套', '打包', '一起帶', '含運'],
+    price_near_keyword: true, near_distance: 60, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 14000, max_price: 20500
+  },
+  switch_oled: {
+    name: 'Switch OLED 主機',
+    keywords: ['Switch', 'Nintendo Switch', 'NS'],
+    require: ['OLED', '主機', '電力加強版'],
+    exclude: ['Switch Lite', 'Lite', '故障', '空盒', '已售出', '暫售', '已保留', 'sold'],
+    accessory_exclude: ['遊戲片', '卡帶', 'Joy-Con', 'Pro手把', '保護殼', '收納包', '健身環', '底座'],
+    ignore_numbers: ['2021', '2022', '2023', '2024', '2025', '64', '128', '256'],
+    bundle_words: ['合售', '整組', '全套', '打包', '一起帶', '含運'],
+    price_near_keyword: true, near_distance: 60, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 3500, max_price: 6800
+  },
+  iphone: {
+    name: 'iPhone 15 / 16（非 Pro）',
+    keywords: ['iPhone 15', 'iPhone 16', 'iphone15', 'iphone16'],
+    require: ['128G', '256G', '512G', '128GB', '256GB', '台灣公司貨', '電池健康度'],
+    exclude: ['Pro', 'Pro Max', 'Plus', '零件機', '無法開機', 'ID鎖', '空盒', '已售出', '暫售', 'sold'],
+    accessory_exclude: ['保護殼', '手機殼', '保護貼', '玻璃貼', '鏡頭貼', '充電頭', '充電線'],
+    ignore_numbers: ['128', '256', '512', '1024', '2023', '2024', '2025'],
+    bundle_words: ['合售', '整組', '全套', '含運'],
+    price_near_keyword: true, near_distance: 60, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 10000, max_price: 20000
+  },
+  rtx: {
+    name: 'RTX 4070 / 5070 顯示卡',
+    keywords: ['4070', '4070 Super', '4070 Ti', '5070', '5070 Ti'],
+    require: ['RTX', '顯卡', '顯示卡', '華碩', '微星', '技嘉', 'ASUS', 'MSI', 'Gigabyte'],
+    exclude: ['筆電', 'NB', '套裝機', '整機', '故障', '花屏', '空盒', '已售出', '暫售', 'sold'],
+    accessory_exclude: ['支架', '電源線', '轉接線', '水冷頭', '風扇'],
+    ignore_numbers: ['4070', '5070', '4080', '4090', '12', '16', '2024', '2025'],
+    bundle_words: ['合售', '整組', '含運'],
+    price_near_keyword: true, near_distance: 60, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 9000, max_price: 18500
+  },
+  sony_a7c2: {
+    name: 'Sony A7C II 相機',
+    keywords: ['A7C2', 'A7CII', 'A7C II', 'ILCE-7CM2'],
+    require: ['單機身', '機身', '公司貨', '水貨', '快門數', '相機'],
+    exclude: ['故障', '進水', '空盒', '已售出', '暫售', 'sold'],
+    accessory_exclude: ['電池', '充電器', '背帶', '防潮箱', '記憶卡', '保護鏡', '手把', '兔籠'],
+    ignore_numbers: ['2023', '2024', '2025', '28', '35', '50', '85', '2470'],
+    bundle_words: ['合售', '整組', '一機一鏡', '含運'],
+    price_near_keyword: true, near_distance: 70, reject_multi_item: true,
+    exclude_non_sale: true, require_taiwan_currency: true,
+    min_price: 30000, max_price: 52000
+  }
+};
+
+function applyTheme(mode) {
+  const m = (mode === 'light' || mode === 'dark') ? mode : 'system';
+  state.theme = m;
+  try { localStorage.setItem('lph_theme', m); } catch (e) {}
+  const resolved = m === 'system'
+    ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : m;
+  document.documentElement.setAttribute('data-theme', resolved);
+  document.querySelectorAll('.theme-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.themeVal === m);
+  });
+}
+
+(function initThemeEarly(){
+  let saved = 'system';
+  try { saved = localStorage.getItem('lph_theme') || 'system'; } catch (e) {}
+  applyTheme(saved);
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (state.theme === 'system') applyTheme('system');
+    });
+  }
+})();
+
+document.querySelectorAll('.theme-btn').forEach(btn => {
+  btn.onclick = async () => {
+    applyTheme(btn.dataset.themeVal);
+    if (state.config) {
+      state.config.theme = state.theme;
+      try { await api('/api/save', {config: collect()}); } catch (e) {}
+    }
+  };
+});
 
 async function api(path, data) {
   const opt = data === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF}, body:JSON.stringify(data)};
@@ -612,32 +926,185 @@ function el(id){ return document.getElementById(id); }
 function renderChips(st){
   const en = currentLang === 'en';
   const fb = el('chip-fb');
-  if (st.login && st.login.status === 'ok') { fb.textContent = (en ? 'FB: signed in' : 'FB：已登入') + (st.login.account ? '（'+st.login.account+'）' : ''); fb.className='chip ok'; }
-  else if (st.login && st.login.status === 'waiting') { fb.textContent = en ? 'FB: waiting for sign-in…' : 'FB：等待登入…'; fb.className='chip warn'; }
-  else if (st.login && st.login.status === 'error') { fb.textContent = en ? 'FB: sign-in failed' : 'FB：登入失敗'; fb.className='chip bad'; }
-  else { fb.textContent = en ? 'FB: signed out' : 'FB：未登入'; fb.className='chip'; }
+  if (st.login && st.login.status === 'ok') { fb.innerHTML = '<span class="dot"></span>' + esc((en ? 'FB: signed in' : 'FB：已登入') + (st.login.account ? '（'+st.login.account+'）' : '')); fb.className='chip ok'; }
+  else if (st.login && st.login.status === 'waiting') { fb.innerHTML = '<span class="dot"></span>' + (en ? 'FB: waiting for sign-in…' : 'FB：等待登入…'); fb.className='chip warn'; }
+  else if (st.login && st.login.status === 'error') { fb.innerHTML = '<span class="dot"></span>' + (en ? 'FB: sign-in failed' : 'FB：登入失敗'); fb.className='chip bad'; }
+  else { fb.innerHTML = '<span class="dot"></span>' + (en ? 'FB: signed out' : 'FB：未登入'); fb.className='chip'; }
 
   const mon = el('chip-mon');
-  mon.textContent = en ? 'Monitoring: ' + (st.monitoring ? 'running' : 'stopped') : '監控：' + (st.monitoring ? '執行中' : '停止');
+  mon.innerHTML = '<span class="dot"></span>' + (en ? 'Monitoring: ' + (st.monitoring ? 'running' : 'stopped') : '監控：' + (st.monitoring ? '執行中' : '停止'));
   mon.className = 'chip ' + (st.monitoring ? 'ok' : '');
 
   const bot = el('chip-bot');
-  if (st.bot && st.bot.configured) { bot.textContent = (en ? 'Bot mailbox: ' : '機器人信箱：') + st.bot.masked; bot.className='chip ok'; }
-  else { bot.textContent = en ? 'Bot mailbox: not set' : '機器人信箱：未設定'; bot.className='chip bad'; }
+  if (st.bot && st.bot.configured) { bot.innerHTML = '<span class="dot"></span>' + esc((en ? 'Bot mailbox: ' : '機器人信箱：') + st.bot.masked); bot.className='chip ok'; }
+  else { bot.innerHTML = '<span class="dot"></span>' + (en ? 'Bot mailbox: not set' : '機器人信箱：未設定'); bot.className='chip'; }
+
+  const stats = st.stats || {};
+  const qChip = el('chip-quiet');
+  if (qChip) {
+    if (stats.quiet_active) {
+      const mMap = {slow:'降速中', mute:'靜音收錄中', pause:'暫停中'};
+      qChip.hidden = false;
+      qChip.className = 'chip warn';
+      qChip.innerHTML = '<span class="dot"></span>🌙 勿擾：' + (mMap[stats.quiet_mode] || stats.quiet_mode);
+    } else {
+      qChip.hidden = true;
+    }
+  }
+  if (el('kpi-cycles')) el('kpi-cycles').textContent = stats.cycles_today ?? 0;
+  if (el('kpi-deals')) el('kpi-deals').textContent = stats.deals_today ?? 0;
+  if (el('kpi-blocked')) el('kpi-blocked').textContent = stats.blocked_today ?? 0;
+  if (el('kpi-sec')) el('kpi-sec').textContent = stats.last_cycle_sec ? (stats.last_cycle_sec + 's') : '--';
+
+  if (st.version && el('hdr-version')) el('hdr-version').textContent = 'v' + st.version;
 
   const cover = el('cover-status');
-  if (cover) cover.textContent = st.monitoring
-    ? (en ? 'Monitoring: scanning groups' : '監控中：正在掃描社團')
-    : (en ? 'Stopped' : '目前停止');
+  if (cover) {
+    if (stats.health === 'error' && stats.last_error) {
+      cover.innerHTML = '<span class="bad">⚠ 異常：' + esc(stats.last_error.slice(0, 60)) + '</span>';
+    } else if (st.monitoring) {
+      cover.innerHTML = '<span class="ok">● 監控中' + (stats.last_cycle_at ? '（上次 ' + esc(stats.last_cycle_at) + '）' : '') + '</span>';
+    } else {
+      cover.textContent = en ? 'Stopped' : '目前停止';
+    }
+  }
 }
 
 function renderLogs(lines){
   el('logs').textContent = (lines && lines.length) ? lines.join('\n') : '（尚無日誌）';
 }
 
+function fmtLocalTime(iso){
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return (d.getMonth()+1) + '/' + d.getDate() + ' ' +
+      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  } catch (e) { return iso; }
+}
+
+async function loadHistory(){
+  try {
+    const r = await api('/api/history');
+    if (!r.ok) return;
+    renderDeals(r.deals || []);
+    renderBlocked(r.blocked || []);
+    if (Array.isArray(r.blocked_sellers) && el('blocked-sellers') && document.activeElement !== el('blocked-sellers')) {
+      el('blocked-sellers').value = r.blocked_sellers.join('\n');
+    }
+  } catch (e) {}
+}
+
+function renderDeals(items){
+  const box = el('feed-deals');
+  if (!items.length) {
+    box.innerHTML = '<div class="hint">尚無命中紀錄；開始監控後命中的低價貼文會顯示在這裡。</div>';
+    return;
+  }
+  box.innerHTML = items.map(it => {
+    const thumb = it.image_url
+      ? '<img class="feed-thumb" src="' + esc(it.image_url) + '" loading="lazy" alt="thumb" onerror="this.style.display=\'none\'">'
+      : '<div class="feed-thumb-ph">🔥</div>';
+    const stCls = it.status === '已私訊' ? 'status-done' : (it.status === '誤報' ? 'status-fp' : '');
+    const stPill = it.status ? '<span class="pill ' + stCls + '">' + esc(it.status) + '</span>' : '';
+    const sellerBtn = it.author
+      ? '<button type="button" class="btn ghost sm" onclick="quickBlockSeller(' + JSON.stringify(it.author).replace(/"/g,'&quot;') + ')">🚫 封鎖賣家</button>'
+      : '';
+    const linkBtn = it.url
+      ? '<a class="btn sm" href="' + esc(it.url) + '" target="_blank" rel="noopener">前往貼文 ↗</a>'
+      : '';
+    return '<div class="feed-item">' + thumb + '<div class="feed-main">' +
+      '<div class="feed-top">' +
+        '<span class="price-tag">NT$' + Number(it.price || 0).toLocaleString() + '</span>' +
+        '<span class="pill">' + esc(it.rule || '規則') + '</span>' + stPill +
+      '</div>' +
+      '<div class="feed-meta">' + esc(it.group || '') + (it.author ? ' · 賣家：' + esc(it.author) : '') + (it.found_at ? ' · ' + esc(fmtLocalTime(it.found_at)) : '') + '</div>' +
+      '<div class="feed-text">' + esc((it.text || '').slice(0, 180)) + '</div>' +
+      '<div class="feed-actions">' +
+        linkBtn +
+        '<button type="button" class="btn ghost sm" onclick="markDeal(' + JSON.stringify(it.key).replace(/"/g,'&quot;') + ',\'已私訊\')">✅ 已私訊</button>' +
+        '<button type="button" class="btn ghost sm" onclick="markDeal(' + JSON.stringify(it.key).replace(/"/g,'&quot;') + ',\'誤報\')">⚠️ 標記誤報</button>' +
+        sellerBtn +
+      '</div>' +
+    '</div></div>';
+  }).join('');
+}
+
+function renderBlocked(items){
+  const box = el('feed-blocked');
+  if (!items.length) {
+    box.innerHTML = '<div class="hint">尚無被攔截的貼文紀錄；後續符合關鍵字但被條件擋下的貼文會自動記在這裡供稽核。</div>';
+    return;
+  }
+  box.innerHTML = items.map(it => {
+    const thumb = it.image_url
+      ? '<img class="feed-thumb" src="' + esc(it.image_url) + '" loading="lazy" alt="thumb" onerror="this.style.display=\'none\'">'
+      : '<div class="feed-thumb-ph">🛡️</div>';
+    const pricePart = it.price ? '<span class="pill">NT$' + Number(it.price).toLocaleString() + '</span>' : '';
+    const linkBtn = it.url ? '<a class="btn ghost sm" href="' + esc(it.url) + '" target="_blank" rel="noopener">查看貼文 ↗</a>' : '';
+    return '<div class="feed-item">' + thumb + '<div class="feed-main">' +
+      '<div class="feed-top">' +
+        '<span class="pill">' + esc(it.rule || '規則') + '</span>' +
+        '<span class="pill reason">' + esc(it.reason || '已攔截') + '</span>' +
+        pricePart +
+      '</div>' +
+      '<div class="feed-meta">' + esc(it.group || '') + (it.author ? ' · 賣家：' + esc(it.author) : '') + (it.created_at ? ' · ' + esc(fmtLocalTime(it.created_at)) : '') + '</div>' +
+      '<div class="feed-text">' + esc((it.text || '').slice(0, 180)) + '</div>' +
+      '<div class="feed-actions">' +
+        '<button type="button" class="btn sm" onclick="sendToTester(' + JSON.stringify(it.text || '').replace(/"/g,'&quot;') + ')">🧪 送入規則測試器</button>' +
+        linkBtn +
+      '</div>' +
+    '</div></div>';
+  }).join('');
+}
+
+window.markDeal = async (key, status) => {
+  await api('/api/deal-status', {key, status});
+  loadHistory();
+};
+
+window.quickBlockSeller = async (seller) => {
+  if (!confirm('確定要將「' + seller + '」加入賣家黑名單？之後會自動略過該賣家所有貼文。')) return;
+  const r = await api('/api/block-seller', {seller});
+  if (r.ok) {
+    if (state.config) state.config.blocked_sellers = r.blocked_sellers || [];
+    loadHistory();
+  }
+};
+
+window.sendToTester = (text) => {
+  toggleSettings(true);
+  el('test-text').value = text || '';
+  el('tester-card').scrollIntoView({behavior:'smooth'});
+  setTimeout(() => { el('btn-test-rule').click(); }, 250);
+};
+
+function setHistoryTab(tab){
+  state.historyTab = tab;
+  el('tab-deals').classList.toggle('active', tab === 'deals');
+  el('tab-blocked').classList.toggle('active', tab === 'blocked');
+  el('feed-deals').hidden = (tab !== 'deals');
+  el('feed-blocked').hidden = (tab !== 'blocked');
+  el('dashboard-hint').textContent = tab === 'deals'
+    ? '檢視所有已命中的甜甜價貼文，可直接標記「已私訊」、回報誤報，或一鍵封鎖賣家。'
+    : '列出含有關鍵字但被規則（或黑名單／時效）攔截的貼文，可一鍵送入規則測試器檢查是否誤擋。';
+}
+el('tab-deals').onclick = () => setHistoryTab('deals');
+el('tab-blocked').onclick = () => setHistoryTab('blocked');
+el('btn-refresh-history').onclick = loadHistory;
+
+let historyTick = 0;
 async function refresh(){
   const r = await api('/api/state');
-  if (r.status) { state.status = r.status; renderChips(r.status); renderLogs(r.status.logs); renderUpdate(r.status.update); }
+  if (r.status) {
+    state.status = r.status;
+    renderChips(r.status);
+    renderLogs(r.status.logs);
+    renderUpdate(r.status.update);
+  }
+  historyTick += 1;
+  if (historyTick % 3 === 0) loadHistory();
 }
 
 function renderUpdate(update){
@@ -680,27 +1147,27 @@ function addRule(rule){
   const wrap = document.createElement('div');
   wrap.className = 'rule';
   wrap.innerHTML = `
-    <div class="top"><input class="r-name" placeholder="物品名稱，例如 iPhone 15" value="${rule.name||''}"><button class="del">刪除</button></div>
+    <div class="top"><input class="r-name" placeholder="物品名稱，例如 iPhone 15" value="${esc(rule.name||'')}"><button class="del">刪除</button></div>
     <div class="row">
-      <div><label>關鍵字（逗號分隔）</label><input class="r-kw" placeholder="PS5, PlayStation 5" value="${(rule.keywords||[]).join(', ')}"></div>
-      <div><label>全域排除詞（整篇排除，逗號分隔）</label><input class="r-ex" placeholder="PS5 Pro, 故障機, 藍燈死機, 空盒" value="${(rule.exclude||[]).join(', ')}"></div>
+      <div><label>關鍵字（逗號分隔）</label><input class="r-kw" placeholder="PS5, PlayStation 5" value="${esc((rule.keywords||[]).join(', '))}"></div>
+      <div><label>全域排除詞（整篇排除，逗號分隔）</label><input class="r-ex" placeholder="PS5 Pro, 故障機, 藍燈死機, 空盒" value="${esc((rule.exclude||[]).join(', '))}"></div>
     </div>
     <div class="row">
       <div>
         <label>主體／配件排除詞（不誤殺附贈品，逗號分隔）</label>
-        <input class="r-acc-ex" placeholder="遊戲片, 手把, 控制器, 散熱器, SSD, PS Portal" value="${(rule.accessory_exclude||[]).join(', ')}">
+        <input class="r-acc-ex" placeholder="遊戲片, 手把, 控制器, 散熱器, SSD, PS Portal" value="${esc((rule.accessory_exclude||[]).join(', '))}">
         <p class="hint">單賣配件時排除；但主機貼文寫「附手把、贈遊戲片」不會誤殺。</p>
       </div>
       <div>
         <label>忽略型號數字（防誤當價格，逗號分隔）</label>
-        <input class="r-ign-num" placeholder="1018, 1118, 1218, 2018, 2118, 2200" value="${(rule.ignore_numbers||[]).join(', ')}">
+        <input class="r-ign-num" placeholder="1018, 1118, 1218, 2018, 2118, 2200" value="${esc((rule.ignore_numbers||[]).join(', '))}">
         <p class="hint">這些裸數字（無 $ 或 元 時）不會被誤認成價格。</p>
       </div>
     </div>
     <div class="row">
       <div>
         <label>必須包含（逗號分隔，至少一個）</label>
-        <input class="r-req" placeholder="主機, 光碟版, 數位版, Slim, 1218, 2018" value="${(rule.require||[]).join(', ')}">
+        <input class="r-req" placeholder="主機, 光碟版, 數位版, Slim, 1218, 2018" value="${esc((rule.require||[]).join(', '))}">
         <p class="hint">產品的「類型字」，至少出現一個才算（會自動排除相容性敘述與 #hashtag）。</p>
       </div>
     </div>
@@ -712,7 +1179,7 @@ function addRule(rule){
       </div>
       <div>
         <label>合售／整組等字（逗號分隔）</label>
-        <input class="r-bundle" value="${(rule.bundle_words||['合售','整組','全套','打包','一起帶','含運']).join(', ')}">
+        <input class="r-bundle" value="${esc((rule.bundle_words||['合售','整組','全套','打包','一起帶','含運']).join(', '))}">
         <p class="hint">有這些字代表整組賣，不會被下面的「多項商品」判斷跳過。</p>
       </div>
     </div>
@@ -729,7 +1196,7 @@ function addRule(rule){
   wrap.querySelector('.del').onclick = () => {
     wrap.remove();
     if (!document.querySelector('.rule')) {
-      el('rules').innerHTML = '<div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」開始。</div>';
+      el('rules').innerHTML = '<div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」或從上方範本庫一鍵套用。</div>';
     }
     renderMatrix();
   };
@@ -739,6 +1206,13 @@ function addRule(rule){
   el('rules').appendChild(wrap);
   renderMatrix();
 }
+
+el('btn-apply-preset').onclick = () => {
+  const key = el('preset-select').value;
+  if (!key || !RULE_PRESETS[key]) return;
+  addRule(JSON.parse(JSON.stringify(RULE_PRESETS[key])));
+  el('preset-select').value = '';
+};
 
 const matrixState = new Map();
 
@@ -756,7 +1230,6 @@ function renderGroups(){
   const discovered = (state.discovered || []);
   const savedGroups = (state.config && state.config.groups) || [];
   const selected = new Set(savedGroups.map(g=>g.url));
-  // 尚未重新抓取時，直接把已儲存的監控社團以名稱＋勾選框顯示在清單中，與下方規則矩陣保持一致
   const displayList = discovered.length ? discovered : savedGroups;
   if (!displayList.length) {
     list.innerHTML = '<div class="hint">按上面按鈕抓取，或直接在下面貼社團網址。</div>';
@@ -823,12 +1296,6 @@ function selectedGroups(){
     groups.push({name: saved ? saved.name : (url.split('/groups/')[1]?.split('/')[0] || '社團'), url});
   });
   return groups;
-}
-
-// 抓取社團後，一律預設全部不勾選，由使用者自行挑選要監控的社團
-function pickGroupsForDiscovery(discovered, previousList, ruleDefs){
-  void discovered; void previousList; void ruleDefs;
-  return [];
 }
 
 function renderMatrix(){
@@ -903,8 +1370,10 @@ function collect(){
     }
     return g;
   }).filter(g=>!rules.length || (g.rules && g.rules.length > 0));
+  const blockedSellers = el('blocked-sellers').value.split(/[,，;；\n\r]+/).map(s=>s.trim()).filter(Boolean);
   return {
     groups, rules,
+    blocked_sellers: blockedSellers,
     email: { to: el('email-to').value.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean), mode: 'bot' },
     notify_mode: (document.querySelector('input[name=notify_mode]:checked')||{}).value || 'instant',
     digest_hour: Math.min(23, Math.max(0, parseInt(el('digest-hour').value||'21',10))),
@@ -912,9 +1381,20 @@ function collect(){
     autostart: el('autostart').checked,
     auto_monitor: el('auto-monitor').checked,
     max_post_age_minutes: Math.max(0, parseInt(el('max-age').value||'10',10)),
-    interval_seconds: Math.max(60, parseInt(el('interval').value||'5',10)*60),
-    max_posts_per_group: Math.max(3, parseInt(el('maxposts').value||'8',10)),
-    profile_dir: state.config.profile_dir || 'data/ui_profile',
+    interval_seconds: Math.max(60, parseInt(el('interval').value||'2',10)*60),
+    max_posts_per_group: Math.max(10, parseInt(el('maxposts').value||'25',10)),
+    profile_dir: (state.config && state.config.profile_dir) || 'data/ui_profile',
+    theme: state.theme || 'system',
+    health_alert_enabled: el('health-alert').checked,
+    daily_heartbeat_enabled: el('daily-heartbeat').checked,
+    daily_heartbeat_hour: Math.min(23, Math.max(0, parseInt(el('daily-heartbeat-hour').value||'9',10))),
+    quiet_hours_enabled: el('quiet-enabled').checked,
+    quiet_start_hour: Math.min(23, Math.max(0, parseInt(el('quiet-start').value||'1',10))),
+    quiet_end_hour: Math.min(23, Math.max(0, parseInt(el('quiet-end').value||'7',10))),
+    quiet_mode: el('quiet-mode').value || 'slow',
+    quiet_interval_minutes: Math.max(2, parseInt(el('quiet-interval').value||'15',10)),
+    desktop_notify_enabled: el('desktop-notify').checked,
+    remote_control_enabled: el('remote-enabled').checked,
     update_repo: el('update-repo').value.trim(),
     update_check_enabled: el('update-enabled').checked,
     update_check_hour: Math.min(23, Math.max(0, parseInt(el('update-hour').value||'9',10))),
@@ -928,16 +1408,28 @@ async function load(){
   state.config = r.config; state.discovered = (r.status && r.status.discovered) || [];
   el('language').value = r.config.language || 'zh-TW';
   currentLang = r.config.language === 'en' ? 'en' : 'zh-TW';
+  if (r.config.theme) applyTheme(r.config.theme);
   applyLanguage();
   const et = r.config.email && r.config.email.to;
   el('email-to').value = Array.isArray(et) ? et.join('\n') : (et || '');
-  el('interval').value = Math.round((r.config.interval_seconds||300)/60);
-  el('maxposts').value = r.config.max_posts_per_group||8;
+  el('interval').value = Math.max(1, Math.round((r.config.interval_seconds||120)/60));
+  el('maxposts').value = r.config.max_posts_per_group||25;
   const mode = r.config.notify_mode || 'instant';
   document.querySelectorAll('input[name=notify_mode]').forEach(x=>{ x.checked = (x.value===mode); });
   el('digest-hour').value = (r.config.digest_hour ?? 21);
   el('autostart').checked = !!r.config.autostart;
   el('auto-monitor').checked = !!r.config.auto_monitor;
+  el('blocked-sellers').value = Array.isArray(r.config.blocked_sellers) ? r.config.blocked_sellers.join('\n') : (r.config.blocked_sellers || '');
+  el('health-alert').checked = r.config.health_alert_enabled !== false;
+  el('daily-heartbeat').checked = !!r.config.daily_heartbeat_enabled;
+  el('daily-heartbeat-hour').value = (r.config.daily_heartbeat_hour ?? 9);
+  el('quiet-enabled').checked = !!r.config.quiet_hours_enabled;
+  el('quiet-start').value = (r.config.quiet_start_hour ?? 1);
+  el('quiet-end').value = (r.config.quiet_end_hour ?? 7);
+  el('quiet-mode').value = r.config.quiet_mode || 'slow';
+  el('quiet-interval').value = (r.config.quiet_interval_minutes ?? 15);
+  el('desktop-notify').checked = r.config.desktop_notify_enabled !== false;
+  el('remote-enabled').checked = !!r.config.remote_control_enabled;
   el('update-repo').value = r.config.update_repo || '';
   el('update-hour').value = (r.config.update_check_hour ?? 9);
   el('update-enabled').checked = r.config.update_check_enabled !== false;
@@ -950,12 +1442,13 @@ async function load(){
   el('rules').innerHTML='';
   (r.config.rules||[]).forEach(addRule);
   if (!(r.config.rules||[]).length) {
-    el('rules').innerHTML = '<div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」開始。</div>';
+    el('rules').innerHTML = '<div class="hint" id="rules-empty">還沒有物品，按下面的「＋ 新增物品」或從上方範本庫一鍵套用。</div>';
   }
   renderGroups();
   renderChips(r.status); renderLogs(r.status.logs);
   renderUpdate(r.status.update);
   if (r.status.login && r.status.login.status==='ok') el('login-status').innerHTML='<span class="ok">已登入</span>';
+  loadHistory();
 }
 
 el('btn-login').onclick = async ()=>{
@@ -998,7 +1491,6 @@ el('btn-discover').onclick = async ()=>{
       clearInterval(timer);
       state.discovered = s.status.discovered || [];
       if (state.discovered.length) {
-        // 抓出來的社團預設全部不勾選，且與下方「各社團套用哪些規則」保持同步
         state.config.groups = [];
         matrixState.clear();
         el('manual-groups').value = '';
@@ -1013,6 +1505,7 @@ el('btn-discover').onclick = async ()=>{
   }, 2000);
 };
 
+const DEFAULT_EXCLUDES = ['已售出', '暫售', '已保留', '已成交', 'sold', '已下架', '缺貨'];
 el('btn-add-rule').onclick = ()=> addRule({name:'', keywords:[], exclude:DEFAULT_EXCLUDES, require:[], min_price:0, max_price:100000});
 
 el('btn-fetch-post').onclick = async ()=>{
@@ -1129,6 +1622,18 @@ el('btn-test').onclick = async ()=>{
   await api('/api/save', {config: collect()});
   const r = await api('/api/test-email', {});
   el('email-status').innerHTML = r.ok ? '<span class="ok">已寄出，請檢查信箱</span>' : '<span class="bad">'+esc(r.error || '寄送失敗')+'</span>';
+};
+
+el('btn-test-alert').onclick = async ()=>{
+  el('alert-test-status').textContent = '測試中…';
+  await api('/api/save', {config: collect()});
+  const r = await api('/api/test-alert', {});
+  if (r.ok) {
+    const ch = (r.channels && r.channels.length) ? '（已推播至 ' + r.channels.join('、') + '＋桌面氣泡）' : '（已送出系統匣氣泡通知）';
+    el('alert-test-status').innerHTML = '<span class="ok">已送出' + esc(ch) + '</span>';
+  } else {
+    el('alert-test-status').innerHTML = '<span class="bad">' + esc(r.error || '測試失敗') + '</span>';
+  }
 };
 
 el('btn-save').onclick = async ()=>{
@@ -1266,7 +1771,7 @@ el('btn-copy-errors').onclick = async ()=>{
 function toggleSettings(show){
   const panel = el('settings-panel');
   panel.hidden = show === undefined ? !panel.hidden : !show;
-  el('btn-open-settings').textContent = panel.hidden ? '設定' : '關閉設定';
+  el('btn-open-settings').textContent = panel.hidden ? '⚙ 設定' : '✕ 關閉設定';
   if (!panel.hidden) { panel.scrollIntoView({behavior:'smooth'}); loadSurveyRules(); }
 }
 el('btn-open-settings').onclick = ()=>toggleSettings();
@@ -1280,7 +1785,6 @@ el('language').onchange = async ()=>{
 };
 
 let loginChecked = false;
-const DEFAULT_EXCLUDES = ['已售出', '暫售', '已保留', '已成交', 'sold', '已下架', '缺貨'];
 async function checkLogin(){
   if (loginChecked) return;
   loginChecked = true;
@@ -1313,6 +1817,11 @@ async function loadChannels(){
   }
   if (r.discord) {
     el('dc-status').textContent = r.discord.configured ? '已設定' : '未設定';
+    el('dc-channel-id').value = r.discord.channel_id || '';
+    el('dc-allowed-uid').value = r.discord.allowed_user_id || '';
+    if (r.discord.bot_configured) {
+      el('dc-bot-status').innerHTML = '<span class="ok">Discord Bot 遠端指令已設定完成</span>';
+    }
   }
 }
 
@@ -1320,11 +1829,15 @@ async function saveChannels(){
   const r = await api('/api/save-channels', {
     telegram_token: el('tg-token').value.trim(),
     telegram_chat_id: el('tg-chat').value.trim(),
-    discord_webhook: el('dc-webhook').value.trim()
+    discord_webhook: el('dc-webhook').value.trim(),
+    discord_bot_token: el('dc-bot-token').value.trim(),
+    discord_channel_id: el('dc-channel-id').value.trim(),
+    discord_allowed_user_id: el('dc-allowed-uid').value.trim()
   });
   if (r.ok) {
     el('tg-token').value = '';
     el('dc-webhook').value = '';
+    el('dc-bot-token').value = '';
     el('ch-status').innerHTML = '<span class="ok">已儲存</span>';
     loadChannels();
   } else {
@@ -1366,147 +1879,6 @@ function loadSurveyRules(){
   });
   if (current) sel.value = current;
 }
-
-function drawSurvey(data){
-  const canvas = el('survey-chart');
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = 900 * dpr;
-  canvas.height = 320 * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, 900, 320);
-
-  const points = (data.points || []).filter(p => p.price);
-  if (!points.length) {
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '14px Microsoft JhengHei';
-    ctx.fillText('沒有可繪製的價格', 20, 40);
-    return;
-  }
-  const sorted = [...points].sort((a, b) => {
-    const ta = new Date(a.at || a.date).getTime();
-    const tb = new Date(b.at || b.date).getTime();
-    return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
-  });
-
-  const times = sorted.map(p => {
-    const d = new Date(p.at || p.date);
-    return isNaN(d.getTime()) ? null : d.getTime();
-  });
-  const useTime = times.every(v => v !== null) && new Set(times).size > 1;
-  const xs = useTime ? times : sorted.map((_, i) => i);
-  const xmin = Math.min(...xs), xmax = Math.max(...xs);
-  const prices = sorted.map(p => p.price);
-  const ymin = Math.min(...prices), ymax = Math.max(...prices);
-  const span = Math.max(1, ymax - ymin);
-  const padL = 64, padR = 64, padT = 20, padB = 40;
-  const w = 900 - padL - padR, h = 320 - padT - padB;
-  const x = v => xmax === xmin ? padL + w / 2 : padL + (v - xmin) / (xmax - xmin) * w;
-  const y = v => padT + h - (v - ymin) / span * h;
-
-  ctx.font = '11px Microsoft JhengHei';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const yy = padT + h * i / 4;
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + w, yy); ctx.stroke();
-    ctx.fillStyle = '#6b7280';
-    ctx.fillText(Math.round(ymax - span * i / 4).toLocaleString(), 6, yy + 4);
-  }
-
-  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
-  const hline = (value, color, label) => {
-    const yy = y(value);
-    ctx.strokeStyle = color;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + w, yy); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = color;
-    ctx.fillText(label + ' ' + Number(value).toLocaleString(), padL + w + 6, yy + 4);
-  };
-  hline(ymin, '#16a34a', '最低');
-  hline(avg, '#2563eb', '平均');
-  hline(ymax, '#dc2626', '最高');
-
-  const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const meanY = prices.reduce((a, b) => a + b, 0) / prices.length;
-  void meanX;
-  void meanY;
-
-  ctx.strokeStyle = '#2563eb';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  sorted.forEach((p, i) => {
-    const xx = x(xs[i]), yy = y(p.price);
-    i ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy);
-  });
-  ctx.stroke();
-
-  ctx.fillStyle = '#1d4ed8';
-  sorted.forEach((p, i) => {
-    ctx.beginPath();
-    ctx.arc(x(xs[i]), y(p.price), 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = '#6b7280';
-  const ticks = 5;
-  for (let i = 0; i < ticks; i++) {
-    const v = xmin + (xmax - xmin) * i / (ticks - 1);
-    let label;
-    if (useTime) {
-      const d = new Date(v);
-      const sameDay = new Date(xmin).toDateString() === new Date(xmax).toDateString();
-      label = sameDay
-        ? String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
-        : (d.getMonth() + 1) + '/' + d.getDate();
-    } else {
-      label = '第 ' + (i + 1) + ' 筆';
-    }
-    ctx.fillText(label, x(v) - 14, 320 - 18);
-  }
-}
-
-async function pollSurvey(){
-  const s = await api('/api/price-survey/status', {});
-  if (s.status === 'running') {
-    el('survey-status').textContent = '掃描中 ' + s.done + '/' + s.total + '：' + (s.message || '');
-    surveyTimer = setTimeout(pollSurvey, 2000);
-  } else if (s.status === 'done') {
-    const count = (s.points || []).length;
-    el('survey-status').textContent = '完成：' + count + ' 筆';
-    if (s.summary && s.summary.min) {
-      el('survey-summary').textContent = '最低 ' + Number(s.summary.min).toLocaleString() +
-        '／平均 ' + Number(s.summary.avg).toLocaleString() +
-        '／最高 ' + Number(s.summary.max).toLocaleString();
-    } else {
-      el('survey-summary').textContent = '沒有找到符合價格的貼文';
-    }
-    el('survey-samples').innerHTML = (s.points || []).slice(0, 15).map(p => {
-      const price = 'NT$' + Number(p.price).toLocaleString() +
-        (p.price_high && Number(p.price_high) !== Number(p.price) ? '–' + Number(p.price_high).toLocaleString() : '');
-      return '<div class="hint">' + esc(p.date) + '｜' + price + '｜' + esc(p.title || p.group || '') + '</div>';
-    }).join('');
-    drawSurvey(s);
-  } else if (s.status === 'error') {
-    el('survey-status').innerHTML = '<span class="bad">' + esc(s.error || '失敗') + '</span>';
-  }
-}
-
-async function startSurvey(){
-  const rule = el('survey-rule').value;
-  if (!rule) { el('survey-status').textContent = '請先新增物品'; return; }
-  el('survey-status').textContent = '啟動中…';
-  el('survey-summary').textContent = '';
-  const r = await api('/api/price-survey/start', {rule});
-  if (!r.ok) {
-    el('survey-status').innerHTML = '<span class="bad">' + esc(r.error || '無法開始') + '</span>';
-    return;
-  }
-  pollSurvey();
-}
-
-el('btn-survey').onclick = startSurvey;
 
 el('btn-export-config').onclick = ()=>{
   const cfg = collect();

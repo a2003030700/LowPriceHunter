@@ -154,6 +154,19 @@ _CARDS_JS = """
     let author = '';
     const headLink = card.querySelector('h2 a, h3 a, h4 a, strong a, strong');
     if (headLink) author = clean(headLink.innerText || '').slice(0, 60);
+    // 抓貼文第一張較大的商品圖（排除頭像與表情符號小圖）
+    let imageUrl = '';
+    for (const img of card.querySelectorAll('img[src]')) {
+      const src = img.getAttribute('src') || '';
+      if (!src.startsWith('http')) continue;
+      if (src.includes('emoji') || src.includes('static.xx.fbcdn.net')) continue;
+      const w = img.naturalWidth || img.width || 0;
+      const h = img.naturalHeight || img.height || 0;
+      if (w >= 140 && h >= 100) {
+        imageUrl = src;
+        break;
+      }
+    }
     const a = card.querySelector('a[href*="set=gm."]');
     let pid = null;
     if (a) { const m = a.href.match(/gm\\.(\\d+)/); if (m) pid = m[1]; }
@@ -168,6 +181,7 @@ _CARDS_JS = """
       id: i,
       text: text,
       author: author,
+      image_url: imageUrl,
       author_comments: authorComments,
       listing_title: listing.listingTitle,
       listing_price: listing.listingPrice,
@@ -369,6 +383,7 @@ class Post:
     age_minutes: float | None = None
     created_at: datetime | None = None
     author: str = ""
+    image_url: str = ""
     listing_title: str = ""
     listing_price: str = ""
     listing_original_price: str = ""
@@ -625,6 +640,7 @@ class FBScraper:
                     age_minutes=age_minutes,
                     created_at=created_at,
                     author=str(item.get("author") or ""),
+                    image_url=str(item.get("image_url") or ""),
                     listing_title=str(item.get("listing_title") or ""),
                     listing_price=str(item.get("listing_price") or ""),
                     listing_original_price=str(item.get("listing_original_price") or ""),

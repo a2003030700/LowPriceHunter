@@ -1,4 +1,4 @@
-"""SQLite 去重資料庫：記錄看過的貼文，避免重複通知。"""
+"""SQLite 去重與歷史資料庫：記錄看過的貼文、命中紀錄、被攔截稽核日誌與價格歷史。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,10 @@ class Store:
                 text       TEXT,
                 found_at   TEXT,
                 notified   INTEGER DEFAULT 0,
-                rule       TEXT
+                rule       TEXT,
+                author     TEXT DEFAULT '',
+                image_url  TEXT DEFAULT '',
+                status     TEXT DEFAULT ''
             )
             """
         )
@@ -61,9 +64,32 @@ class Store:
             )
             """
         )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_key   TEXT,
+                group_name TEXT,
+                author     TEXT,
+                url        TEXT,
+                rule       TEXT,
+                reason     TEXT,
+                price      INTEGER,
+                snippet    TEXT,
+                image_url  TEXT,
+                created_at TEXT
+            )
+            """
+        )
         cols = {row[1] for row in self.conn.execute("PRAGMA table_info(posts)")}
         if "rule" not in cols:
             self.conn.execute("ALTER TABLE posts ADD COLUMN rule TEXT")
+        if "author" not in cols:
+            self.conn.execute("ALTER TABLE posts ADD COLUMN author TEXT DEFAULT ''")
+        if "image_url" not in cols:
+            self.conn.execute("ALTER TABLE posts ADD COLUMN image_url TEXT DEFAULT ''")
+        if "status" not in cols:
+            self.conn.execute("ALTER TABLE posts ADD COLUMN status TEXT DEFAULT ''")
         self.conn.commit()
 
     # ------------------------------------------------------------------
@@ -80,14 +106,105 @@ class Store:
         text: str,
         notified: bool,
         rule_name: str | None = None,
+        author: str = "",
+        image_url: str = "",
+        status: str = "",
     ) -> None:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.conn.execute(
-            "INSERT OR REPLACE INTO posts (key, group_name, url, price, text, found_at, notified, rule)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (key, group_name, url, price, text[:4000], now, 1 if notified else 0, rule_name),
+            "INSERT OR REPLACE INTO posts"
+            " (key, group_name, url, price, text, found_at, notified, rule, author, image_url, status)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                key, group_name, url, price, text[:4000], now,
+                1 if notified else 0, rule_name,
+                (author or "")[:80], (image_url or "")[:1000], (status or "")[:40],
+            ),
         )
         self.conn.commit()
+
+    def set_deal_status(self, key: str, status: str) -> None:
+        self.conn.execute(
+            "UPDATE posts SET status = ? WHERE key = ?",
+            ((status or "")[:40], key),
+        )
+        self.conn.commit()
+
+    def recent_deals(self, limit: int = 50) -> list[dict]:
+        """回傳最近命中的低價貼文清單（供 UI 儀表板顯示）。"""
+        rows = self.conn.execute(
+            "SELECT key, group_name, url, price, text, found_at, rule, author, image_url, status"
+            " FROM posts WHERE price IS NOT NULL AND rule IS NOT NULL"
+            " ORDER BY found_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "key": r[0],
+                "group": r[1] or "",
+                "url": r[2] or "",
+                "price": r[3],
+                "text": (r[4] or "")[:400],
+                "found_at": r[5] or "",
+                "rule": r[6] or "",
+                "author": r[7] or "",
+                "image_url": r[8] or "",
+                "status": r[9] or "",
+            }
+            for r in rows
+        ]
+
+    def record_blocked(
+        self,
+        post_key: str,
+        group_name: str,
+        author: str,
+        url: str,
+        rule: str,
+        reason: str,
+        price: int | None,
+        snippet: str,
+        image_url: str = "",
+        keep_max: int = 300,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.conn.execute(
+            "INSERT INTO audit_log (post_key, group_name, author, url, rule, reason, price, snippet, image_url, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                post_key, group_name, (author or "")[:80], url or "", rule or "",
+                (reason or "")[:120], price, (snippet or "")[:360], (image_url or "")[:1000], now,
+            ),
+        )
+        self.conn.execute(
+            "DELETE FROM audit_log WHERE id NOT IN ("
+            "  SELECT id FROM audit_log ORDER BY id DESC LIMIT ?"
+            ")",
+            (keep_max,),
+        )
+        self.conn.commit()
+
+    def recent_blocked(self, limit: int = 60) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT post_key, group_name, author, url, rule, reason, price, snippet, image_url, created_at"
+            " FROM audit_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "key": r[0] or "",
+                "group": r[1] or "",
+                "author": r[2] or "",
+                "url": r[3] or "",
+                "rule": r[4] or "",
+                "reason": r[5] or "",
+                "price": r[6],
+                "text": r[7] or "",
+                "image_url": r[8] or "",
+                "created_at": r[9] or "",
+            }
+            for r in rows
+        ]
 
     def is_fresh(self, scope: str = "default") -> bool:
         """是否還沒跑過第一次（用來建立基準線）。"""

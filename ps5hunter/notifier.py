@@ -27,7 +27,7 @@ def _post_json(url: str, payload: dict, timeout: int = 20) -> None:
             "Content-Type": "application/json",
             "Accept": "application/json",
             # Discord / Telegram 前面的 Cloudflare 會擋掉 Python-urllib 預設 UA（403）
-            "User-Agent": "LowPriceHunter/1.3.2 (+https://github.com/a2003030700/LowPriceHunter)",
+            "User-Agent": "LowPriceHunter/1.4.0 (+https://github.com/a2003030700/LowPriceHunter)",
         },
         method="POST",
     )
@@ -64,8 +64,10 @@ def build_discord_embed(
     sources: list[str] | None = None,
     risk_words: list[str] | None = None,
     is_split_sale: bool = False,
+    image_url: str = "",
+    author: str = "",
 ) -> dict:
-    """建立 Discord Embed 卡片（含可點擊直達連結、價格、社團與風險標記）。"""
+    """建立 Discord Embed 卡片（含貼文縮圖、可點擊直達連結、價格、社團、賣家與風險標記）。"""
     price_text = _fmt_price_range(price, price_high)
     sources = sources or [group_name]
     split_tag = "（拆售價）" if is_split_sale else ""
@@ -78,6 +80,8 @@ def build_discord_embed(
             "inline": True,
         },
     ]
+    if author:
+        fields.append({"name": "賣家", "value": author[:60], "inline": True})
     if risk_words:
         fields.append({"name": "⚠️ 高風險詞", "value": "、".join(risk_words), "inline": False})
     if post_url:
@@ -88,11 +92,24 @@ def build_discord_embed(
         "description": (snippet or "")[:600],
         "color": 0xF59E0B if risk_words else 0x10B981,
         "fields": fields,
-        "footer": {"text": "Low Price Hunter 即時推播"},
+        "footer": {"text": "Low Price Hunter v1.4 即時推播"},
     }
     if post_url and post_url.startswith(("http://", "https://")):
         embed["url"] = post_url
+    if image_url and image_url.startswith(("http://", "https://")):
+        embed["image"] = {"url": image_url}
     return embed
+
+
+def build_discord_alert_embed(title: str, message: str, level: str = "error") -> dict:
+    """建立系統警報或每日健康回報用的 Discord Embed 卡片。"""
+    color = 0xDC2626 if level == "error" else (0xD97706 if level == "warn" else 0x2563EB)
+    return {
+        "title": title[:240],
+        "description": (message or "")[:1800],
+        "color": color,
+        "footer": {"text": "Low Price Hunter 系統監控回報"},
+    }
 
 
 def send_discord(webhook_url: str, text: str, embed: dict | None = None) -> None:

@@ -40,12 +40,23 @@ from .updater import (
 from .generic import analyze_detail, analyze_post, analyze_text, find_risk_words, rule_from_dict, Rule
 from .notifier import (
     build_digest_message,
+    build_discord_alert_embed,
     build_discord_embed,
     build_generic_message,
     build_text_notification,
     send_discord,
     send_gmail,
     send_telegram,
+)
+from .remote import (
+    RemoteCommand,
+    is_in_quiet_hours,
+    is_seller_blocked,
+    parse_blocked_sellers,
+    parse_remote_command,
+    poll_discord_messages,
+    poll_telegram_updates,
+    send_discord_bot_reply,
 )
 try:  # PTT 價格調查是選用功能，缺少模組時不應影響主程式啟動
     from .ptt_survey import scan_ptt
@@ -138,6 +149,8 @@ _SECRET_RES = (
     (re.compile(r"bot\d+:[A-Za-z0-9_-]{20,}"), "bot<token>"),
     (re.compile(r"https://discord(?:app)?\.com/api/webhooks/[^\s\"']+"), "https://discord.com/api/webhooks/<masked>"),
     (re.compile(r"\b\d{8,}:[A-Za-z0-9_-]{30,}\b"), "<token>"),
+    (re.compile(r"\b[MN][A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{20,}\b"), "<discord_bot_token>"),
+    (re.compile(r"Bot\s+[A-Za-z0-9_.-]{20,}"), "Bot <token>"),
 )
 
 
@@ -171,11 +184,23 @@ DEFAULT_CONFIG = {
     "autostart": False,
     "auto_monitor": False,
     "max_post_age_minutes": 10,
-    "interval_seconds": 300,
-    "max_posts_per_group": 80,
+    "interval_seconds": 120,
+    "max_posts_per_group": 25,
     "profile_dir": "data/ui_profile",
     "language": "zh-TW",
-    "update_repo": "",
+    "theme": "system",
+    "blocked_sellers": [],
+    "health_alert_enabled": True,
+    "daily_heartbeat_enabled": False,
+    "daily_heartbeat_hour": 9,
+    "quiet_hours_enabled": False,
+    "quiet_start_hour": 1,
+    "quiet_end_hour": 7,
+    "quiet_mode": "slow",
+    "quiet_interval_minutes": 15,
+    "desktop_notify_enabled": True,
+    "remote_control_enabled": False,
+    "update_repo": "a2003030700/LowPriceHunter",
     "update_check_enabled": True,
     "update_check_hour": 9,
     "update_skipped": "",
@@ -291,10 +316,29 @@ class App:
             "available": False,
             "message": "尚未檢查",
         }
+        self._stats: dict = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "cycles_today": 0,
+            "deals_today": 0,
+            "blocked_today": 0,
+            "last_cycle_at": "",
+            "last_cycle_sec": 0.0,
+            "last_error": "",
+            "health": "ok",
+        }
+        self._consecutive_failures = 0
+        self._last_alert_at = 0.0
+        self._heartbeat_date: str | None = None
+        self._toast_seq = 0
+        self._latest_toast: dict | None = None
+        self._remote_tg_offset = 0
+        self._remote_dc_last_id = ""
+        self._remote_primed = False
         self._setup_logging()
         if self.config.get("auto_monitor"):
             threading.Timer(2.0, self.start_monitor).start()
         threading.Thread(target=self._update_loop, daemon=True).start()
+        threading.Thread(target=self._remote_loop, daemon=True).start()
 
     # ---------------------------------------------------------------- logging
     def _setup_logging(self):
@@ -322,6 +366,60 @@ class App:
     def monitoring(self) -> bool:
         return bool(self.monitor and self.monitor.is_alive())
 
+    def _reset_daily_stats_if_needed(self) -> None:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self._stats.get("date") != today:
+            self._stats["date"] = today
+            self._stats["cycles_today"] = 0
+            self._stats["deals_today"] = 0
+            self._stats["blocked_today"] = 0
+
+    def _stats_snapshot(self) -> dict:
+        self._reset_daily_stats_if_needed()
+        quiet_active = bool(self.config.get("quiet_hours_enabled")) and is_in_quiet_hours(
+            datetime.now().hour,
+            int(self.config.get("quiet_start_hour") or 1),
+            int(self.config.get("quiet_end_hour") or 7),
+        )
+        snap = dict(self._stats)
+        snap["quiet_active"] = quiet_active
+        snap["quiet_mode"] = str(self.config.get("quiet_mode") or "slow")
+        return snap
+
+    def _push_desktop_toast(
+        self, title: str, body: str, url: str = "", is_error: bool = False
+    ) -> None:
+        if not is_error and not self.config.get("desktop_notify_enabled", True):
+            return
+        self._toast_seq += 1
+        clean_title = re.sub(r"[\r\n]+", " ", str(title or "")).strip()[:80]
+        clean_body = re.sub(r"[\r\n]+", " ", str(body or "")).strip()[:160]
+        clean_url = re.sub(r"[\r\n]+", "", str(url or "")).strip()[:500]
+        self._latest_toast = {
+            "id": self._toast_seq,
+            "title": clean_title,
+            "body": clean_body,
+            "url": clean_url,
+            "error": 1 if is_error else 0,
+        }
+
+    def tray_state_text(self) -> str:
+        """回傳純文字 key=value 狀態給系統匣原生視窗輪詢（無須額外 JSON 依賴）。"""
+        snap = self._stats_snapshot()
+        toast = self._latest_toast or {"id": 0, "title": "", "body": "", "url": "", "error": 0}
+        lines = [
+            f"monitoring={'1' if self.monitoring else '0'}",
+            f"health={snap.get('health', 'ok')}",
+            f"cycles_today={snap.get('cycles_today', 0)}",
+            f"deals_today={snap.get('deals_today', 0)}",
+            f"toast_id={toast['id']}",
+            f"toast_title={toast['title']}",
+            f"toast_body={toast['body']}",
+            f"toast_url={toast['url']}",
+            f"toast_error={toast['error']}",
+        ]
+        return "\n".join(lines) + "\n"
+
     def status(self) -> dict:
         bot = ensure_bot()
         return {
@@ -332,6 +430,7 @@ class App:
             "discovered": self.discovered,
             "version": __version__,
             "update": self.update,
+            "stats": self._stats_snapshot(),
             "bot": {
                 "configured": bool(bot),
                 "user": bot.get("user", ""),
@@ -456,7 +555,12 @@ class App:
                 "configured": bool(tg.get("bot_token") and tg.get("chat_id")),
                 "chat_id": tg.get("chat_id", ""),
             },
-            "discord": {"configured": bool(dc.get("webhook_url"))},
+            "discord": {
+                "configured": bool(dc.get("webhook_url")),
+                "bot_configured": bool(dc.get("bot_token") and dc.get("channel_id")),
+                "channel_id": dc.get("channel_id", ""),
+                "allowed_user_id": dc.get("allowed_user_id", ""),
+            },
         }
 
     def save_channels(self, data: dict) -> dict:
@@ -469,17 +573,38 @@ class App:
         token = str(data.get("telegram_token") or "").strip() or tg.get("bot_token", "")
         chat = str(data.get("telegram_chat_id") or "").strip() or tg.get("chat_id", "")
         webhook = str(data.get("discord_webhook") or "").strip() or dc.get("webhook_url", "")
+        dc_bot = str(data.get("discord_bot_token") or "").strip() or dc.get("bot_token", "")
+        dc_ch = (
+            str(data.get("discord_channel_id") or "").strip()
+            if "discord_channel_id" in data
+            else dc.get("channel_id", "")
+        )
+        dc_uid = (
+            str(data.get("discord_allowed_user_id") or "").strip()
+            if "discord_allowed_user_id" in data
+            else dc.get("allowed_user_id", "")
+        )
         try:
             CHANNEL_STORE.save(
                 {
                     "telegram": {"bot_token": token, "chat_id": chat},
-                    "discord": {"webhook_url": webhook},
+                    "discord": {
+                        "webhook_url": webhook,
+                        "bot_token": dc_bot,
+                        "channel_id": dc_ch,
+                        "allowed_user_id": dc_uid,
+                    },
                 }
             )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": f"無法加密儲存渠道憑證：{exc}"}
         self.log("通知渠道憑證已更新")
-        return {"ok": True, "telegram": bool(token and chat), "discord": bool(webhook)}
+        return {
+            "ok": True,
+            "telegram": bool(token and chat),
+            "discord": bool(webhook),
+            "discord_bot": bool(dc_bot and dc_ch),
+        }
 
     def test_channel(self, channel: str) -> dict:
         try:
@@ -532,6 +657,259 @@ class App:
             return {"ok": True, "summary": summary, "recent": recent}
         finally:
             store.close()
+
+    def deal_history(self) -> dict:
+        """回傳最近命中紀錄與最近被攔截貼文稽核清單，供封面儀表板顯示。"""
+        store = Store(DB_PATH)
+        try:
+            return {
+                "ok": True,
+                "deals": store.recent_deals(60),
+                "blocked": store.recent_blocked(80),
+                "stats": self._stats_snapshot(),
+                "blocked_sellers": parse_blocked_sellers(self.config.get("blocked_sellers")),
+            }
+        finally:
+            store.close()
+
+    def set_deal_status(self, key: str, status: str) -> dict:
+        key = str(key or "").strip()
+        if not key:
+            return {"ok": False, "error": "缺少貼文鍵值"}
+        store = Store(DB_PATH)
+        try:
+            store.set_deal_status(key, str(status or "").strip())
+            return {"ok": True}
+        finally:
+            store.close()
+
+    def block_seller(self, seller: str) -> dict:
+        name = str(seller or "").strip()
+        if not name:
+            return {"ok": False, "error": "請輸入賣家名稱"}
+        current = parse_blocked_sellers(self.config.get("blocked_sellers"))
+        if not any(s.lower() == name.lower() for s in current):
+            current.append(name)
+            self.config["blocked_sellers"] = current
+            save_config(self.config)
+            self.log(f"已將賣家加入黑名單：{name}")
+        return {"ok": True, "blocked_sellers": current}
+
+    def _send_system_alert(
+        self, title: str, message: str, level: str = "error", *, force: bool = False
+    ) -> list[str]:
+        """發送系統異常警報或每日健康回報至所有已啟用渠道與系統匣氣泡。"""
+        if not force and not self.config.get("health_alert_enabled", True):
+            return []
+        self._push_desktop_toast(title, message, is_error=(level == "error"))
+        channels = self.config.get("notify_channels") or ["email"]
+        try:
+            channel_secrets = CHANNEL_STORE.load()
+        except Exception:  # noqa: BLE001
+            channel_secrets = {}
+        sent: list[str] = []
+
+        if "discord" in channels:
+            dc = (channel_secrets or {}).get("discord") or {}
+            if dc.get("webhook_url"):
+                try:
+                    embed = build_discord_alert_embed(title, message, level=level)
+                    send_discord(dc["webhook_url"], f"**{title}**", embed=embed)
+                    sent.append("Discord")
+                except Exception as exc:  # noqa: BLE001
+                    self.log(f"系統警報 Discord 失敗：{exc}")
+
+        if "telegram" in channels:
+            tg = (channel_secrets or {}).get("telegram") or {}
+            if tg.get("bot_token") and tg.get("chat_id"):
+                try:
+                    send_telegram(tg["bot_token"], tg["chat_id"], f"{title}\n\n{message}")
+                    sent.append("Telegram")
+                except Exception as exc:  # noqa: BLE001
+                    self.log(f"系統警報 Telegram 失敗：{exc}")
+
+        if "email" in channels:
+            bot = ensure_bot()
+            recipients = parse_recipients((self.config.get("email") or {}).get("to", ""))
+            if bot and recipients:
+                from email.message import EmailMessage
+                from email.utils import formatdate
+
+                ok_cnt = 0
+                for to in recipients:
+                    try:
+                        msg = EmailMessage()
+                        msg["Subject"] = title
+                        msg["From"] = bot["user"]
+                        msg["To"] = to
+                        msg["Date"] = formatdate(localtime=True)
+                        msg.set_content(message)
+                        send_gmail(msg, bot["user"], bot["app_password"])
+                        ok_cnt += 1
+                    except Exception:  # noqa: BLE001
+                        pass
+                if ok_cnt:
+                    sent.append(f"Email {ok_cnt} 人")
+        return sent
+
+    def test_alert(self) -> dict:
+        sent = self._send_system_alert(
+            "🩺 Low Price Hunter 系統警報與氣泡測試",
+            f"版本 v{__version__}｜監控：{'執行中' if self.monitoring else '已停止'}\n"
+            "若您看到這則通知與 Windows 右下角氣泡，代表異常警報與系統匣通知均正常運作。",
+            level="info",
+            force=True,
+        )
+        return {"ok": True, "channels": sent}
+
+    def _maybe_send_heartbeat(self) -> None:
+        if not self.config.get("daily_heartbeat_enabled"):
+            return
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        hour = int(self.config.get("daily_heartbeat_hour") or 9)
+        if now.hour < hour or self._heartbeat_date == today:
+            return
+        snap = self._stats_snapshot()
+        body = (
+            f"📅 日期：{today}\n"
+            f"🟢 監控狀態：正常運作中（版本 v{__version__}）\n"
+            f"🔄 今日掃描：{snap['cycles_today']} 輪（上次耗時 {snap['last_cycle_sec']:.1f} 秒）\n"
+            f"🔥 今日命中：{snap['deals_today']} 筆｜🛡️ 攔截雜訊：{snap['blocked_today']} 筆\n"
+            f"📌 監控社團：{len(self.config.get('groups') or [])} 個｜規則：{len(self.config.get('rules') or [])} 條"
+        )
+        sent = self._send_system_alert("💚 Low Price Hunter 每日健康回報", body, level="info", force=True)
+        if sent:
+            self._heartbeat_date = today
+            self.log(f"已發送每日健康回報（{', '.join(sent)}）")
+
+    # --------------------------------------------------------- remote control
+    def _handle_remote_command(self, cmd: RemoteCommand) -> str:
+        if cmd.action == "help":
+            return (
+                "🤖 Low Price Hunter 遠端指令清單：\n"
+                "/status — 查看監控狀態、今日統計與規則預算\n"
+                "/pause — 暫停掃描監控\n"
+                "/resume — 恢復掃描監控\n"
+                "/price <上限> 或 /price <規則名> <上限> — 即時修改價格上限\n"
+                "/block <賣家名稱> — 將賣家加入黑名單"
+            )
+        if cmd.action == "status":
+            snap = self._stats_snapshot()
+            rules_summary = "、".join(
+                f"{r.get('name', '規則')}≤{int(r.get('max_price') or 0):,}"
+                for r in (self.config.get("rules") or [])[:5]
+            ) or "（無規則）"
+            quiet_text = f"（勿擾：{snap['quiet_mode']}）" if snap.get("quiet_active") else ""
+            return (
+                f"📊 Low Price Hunter v{__version__}\n"
+                f"狀態：{'🟢 監控中' if self.monitoring else '⏸️ 已停止'}{quiet_text}\n"
+                f"今日掃描：{snap['cycles_today']} 輪｜命中：{snap['deals_today']} 筆｜攔截：{snap['blocked_today']} 筆\n"
+                f"上次掃描：{snap['last_cycle_at'] or '尚無'}（{snap['last_cycle_sec']:.1f} 秒）\n"
+                f"規則預算：{rules_summary}"
+            )
+        if cmd.action == "pause":
+            if not self.monitoring:
+                return "⏸️ 監控目前已經是停止狀態。"
+            self.stop_monitor()
+            return "⏸️ 已收到指令，正在停止監控。"
+        if cmd.action == "resume":
+            if self.monitoring:
+                return "🟢 監控已經在執行中。"
+            res = self.start_monitor()
+            return "🟢 已恢復掃描監控！" if res.get("ok") else f"❌ 無法啟動：{res.get('error', '')}"
+        if cmd.action == "price":
+            try:
+                new_max = int(re.sub(r"[^\d]", "", cmd.arg2))
+            except ValueError:
+                return "❌ 價格格式錯誤，範例：/price 11000 或 /price PS5 10500"
+            if new_max <= 0:
+                return "❌ 價格上限必須大於 0。"
+            rules = self.config.get("rules") or []
+            if not rules:
+                return "❌ 目前沒有任何監控規則。"
+            target = None
+            if cmd.arg1:
+                needle = cmd.arg1.lower()
+                target = next((r for r in rules if needle in str(r.get("name", "")).lower()), None)
+            else:
+                target = rules[0]
+            if not target:
+                return f"❌ 找不到名稱包含「{cmd.arg1}」的規則。"
+            old_max = int(target.get("max_price") or 0)
+            target["max_price"] = new_max
+            save_config(self.config)
+            self.log(f"遠端指令修改預算：{target.get('name')} {old_max:,} -> {new_max:,}")
+            return f"✅ 已更新「{target.get('name')}」最高價：NT${old_max:,} → NT${new_max:,}"
+        if cmd.action == "block":
+            seller = cmd.arg1.strip()
+            if not seller:
+                return "❌ 請提供要封鎖的賣家名稱，範例：/block 小明電玩"
+            self.block_seller(seller)
+            return f"🚫 已將「{seller}」加入賣家黑名單，後續將自動略過其貼文。"
+        return "❓ 未知指令，請輸入 /help 查看說明。"
+
+    def _remote_loop(self) -> None:
+        while True:
+            time.sleep(8)
+            try:
+                if not self.config.get("remote_control_enabled"):
+                    self._remote_primed = False
+                    continue
+                secrets_data = CHANNEL_STORE.load()
+            except Exception:  # noqa: BLE001
+                continue
+
+            tg = (secrets_data or {}).get("telegram") or {}
+            dc = (secrets_data or {}).get("discord") or {}
+            tg_token = tg.get("bot_token", "")
+            tg_chat = str(tg.get("chat_id", "")).strip()
+            dc_token = dc.get("bot_token", "")
+            dc_channel = str(dc.get("channel_id", "")).strip()
+            dc_allowed = str(dc.get("allowed_user_id", "")).strip()
+
+            # 首次啟用時先把既有歷史訊息游標推到最新，不重跑舊指令
+            if not self._remote_primed:
+                try:
+                    if tg_token and tg_chat:
+                        _, self._remote_tg_offset = poll_telegram_updates(tg_token, self._remote_tg_offset)
+                except Exception:
+                    pass
+                try:
+                    if dc_token and dc_channel:
+                        _, self._remote_dc_last_id = poll_discord_messages(dc_token, dc_channel, self._remote_dc_last_id)
+                except Exception:
+                    pass
+                self._remote_primed = True
+                continue
+
+            if tg_token and tg_chat:
+                try:
+                    msgs, self._remote_tg_offset = poll_telegram_updates(tg_token, self._remote_tg_offset)
+                    for chat_id, text in msgs:
+                        if str(chat_id).strip() != tg_chat:
+                            continue
+                        cmd = parse_remote_command(text)
+                        if cmd:
+                            reply = self._handle_remote_command(cmd)
+                            send_telegram(tg_token, tg_chat, reply)
+                except Exception:  # noqa: BLE001
+                    pass
+
+            if dc_token and dc_channel:
+                try:
+                    msgs, self._remote_dc_last_id = poll_discord_messages(
+                        dc_token, dc_channel, self._remote_dc_last_id
+                    )
+                    for _, author_id, text in msgs:
+                        if dc_allowed and author_id != dc_allowed:
+                            continue
+                        cmd = parse_remote_command(text)
+                        if cmd:
+                            reply = self._handle_remote_command(cmd)
+                            send_discord_bot_reply(dc_token, dc_channel, reply)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def fetch_post(self, url: str) -> dict:
         parsed = urlparse(url or "")
@@ -975,8 +1353,31 @@ class App:
         fb: FBScraper | None = None
         fb_started_at = 0.0
         fb_profile: Path | None = None
+        quiet_paused_logged = False
         try:
             while not self.stop_event.is_set():
+                quiet_enabled = bool(self.config.get("quiet_hours_enabled"))
+                quiet_active = quiet_enabled and is_in_quiet_hours(
+                    datetime.now().hour,
+                    int(self.config.get("quiet_start_hour") or 1),
+                    int(self.config.get("quiet_end_hour") or 7),
+                )
+                quiet_mode = str(self.config.get("quiet_mode") or "slow")
+                if quiet_active and quiet_mode == "pause":
+                    if fb is not None:
+                        try:
+                            fb.__exit__(None, None, None)
+                        except Exception:
+                            pass
+                        fb = None
+                    if not quiet_paused_logged:
+                        self.log("目前處於勿擾暫停時段，暫停掃描以節省資源並等待恢復")
+                        quiet_paused_logged = True
+                    if self.stop_event.wait(60):
+                        break
+                    continue
+                quiet_paused_logged = False
+
                 cycle_t0 = time.monotonic()
                 try:
                     profile = self._profile_dir()
@@ -995,14 +1396,40 @@ class App:
                             fb.__enter__()
                             fb_started_at = time.monotonic()
                             fb_profile = profile
-                    self._cycle(store, first_run, fb=fb)
+                    self._cycle(store, first_run, fb=fb, quiet_mute=(quiet_active and quiet_mode == "mute"))
                     first_run = False
                     store.set_baseline()
+                    self._consecutive_failures = 0
+                    self._reset_daily_stats_if_needed()
+                    self._stats["cycles_today"] += 1
+                    self._stats["last_cycle_at"] = datetime.now().strftime("%H:%M:%S")
+                    self._stats["last_cycle_sec"] = round(time.monotonic() - cycle_t0, 1)
+                    self._stats["health"] = "ok"
+                    self._stats["last_error"] = ""
+                    self._maybe_send_heartbeat()
                 except (AuthError, CheckpointError) as exc:
+                    self._stats["health"] = "error"
+                    self._stats["last_error"] = str(exc)
                     self.log(f"需要人工處理：{exc}")
+                    self._send_system_alert(
+                        "🚨 Low Price Hunter：Facebook 需要重新登入或驗證",
+                        f"原因：{exc}\n\n監控已自動暫停，請回到電腦重新登入 Facebook 後再啟動監控。",
+                        level="error",
+                    )
                     break
                 except Exception as exc:  # noqa: BLE001
-                    self.log(f"掃描失敗：{exc}")
+                    self._consecutive_failures += 1
+                    self._stats["last_error"] = str(exc)
+                    self.log(f"掃描失敗（連續第 {self._consecutive_failures} 次）：{exc}")
+                    if self._consecutive_failures >= 3:
+                        self._stats["health"] = "error"
+                        if (time.monotonic() - self._last_alert_at) >= 1800:
+                            self._last_alert_at = time.monotonic()
+                            self._send_system_alert(
+                                "⚠️ Low Price Hunter 連續掃描異常",
+                                f"已連續 {self._consecutive_failures} 輪掃描失敗。\n最近錯誤：{exc}\n\n系統仍會繼續重試，若持續失敗請檢查網路或 Facebook 登入狀態。",
+                                level="error",
+                            )
                     # 發生瀏覽器異常時釋放舊實例，下輪自動重開
                     if fb is not None:
                         try:
@@ -1011,7 +1438,10 @@ class App:
                             pass
                         fb = None
                 elapsed = time.monotonic() - cycle_t0
-                interval = int(self.config.get("interval_seconds") or 120)
+                if quiet_active and quiet_mode == "slow":
+                    interval = max(120, int(self.config.get("quiet_interval_minutes") or 15) * 60)
+                else:
+                    interval = int(self.config.get("interval_seconds") or 120)
                 wait_sec = _next_wait_seconds(interval, elapsed, jitter=True)
                 if self.stop_event.wait(wait_sec):
                     break
@@ -1040,11 +1470,15 @@ class App:
         sources = [group_name]
 
         # 若該貼文（依內容指紋或 post_id）已透過其他社團通知過，直接記錄並跳過
+        post_author = str(getattr(item["post"], "author", "") or "")
+        post_image = str(getattr(item["post"], "image_url", "") or "")
         if store.seen_global(gkey) or not store.claim_global(dedup_key, sources):
             store.remember(
                 item["key"], group_name, item["url"],
                 item["match"].price, item["post"].text, True,
                 rule_name=item["rule"].name,
+                author=post_author,
+                image_url=post_image,
             )
             return True
         if gkey != dedup_key:
@@ -1079,6 +1513,8 @@ class App:
                         sources=sources,
                         risk_words=risks,
                         is_split_sale=is_split,
+                        image_url=post_image,
+                        author=post_author,
                     )
                     send_discord(dc["webhook_url"], summary_line, embed=embed)
                     sent_channels.append("Discord")
@@ -1122,14 +1558,23 @@ class App:
                 item["key"], group_name, item["url"],
                 item["match"].price, item["post"].text, True,
                 rule_name=item["rule"].name,
+                author=post_author,
+                image_url=post_image,
             )
             store.record_price(
                 dedup_key, item["rule"].name, group_name,
                 price, price_high,
             )
+            self._reset_daily_stats_if_needed()
+            self._stats["deals_today"] += 1
             price_label = f"NT${price:,}"
             if price_high and price_high != price:
                 price_label += f"–{price_high:,}"
+            self._push_desktop_toast(
+                f"🔥 {item['rule'].name} {price_label}",
+                f"{group_name}｜{item['post'].short_text[:70]}",
+                url=item["url"],
+            )
             risk_text = f"，高風險：{'、'.join(risks)}" if risks else ""
             self.log(
                 f"已即時通知：{item['rule'].name} {price_label}"
@@ -1143,10 +1588,11 @@ class App:
         self.log("通知失敗：沒有任何渠道成功，游標暫不推進")
         return False
 
-    def _cycle(self, store: Store, first_run: bool, fb: FBScraper | None = None):
+    def _cycle(self, store: Store, first_run: bool, fb: FBScraper | None = None, *, quiet_mute: bool = False):
         cycle_t0 = time.monotonic()
         rules = [rule_from_dict(r) for r in self.config.get("rules", [])]
         groups = self.config.get("groups", [])
+        blocked_sellers = parse_blocked_sellers(self.config.get("blocked_sellers"))
         recipients = parse_recipients((self.config.get("email") or {}).get("to", ""))
         bot = ensure_bot()
         channels = self.config.get("notify_channels") or ["email"]
@@ -1237,37 +1683,95 @@ class App:
                         key = post.key
                         if store.seen(key):
                             continue
+                        url = post.url or group["url"]
+                        post_author = str(getattr(post, "author", "") or "")
+                        post_image = str(getattr(post, "image_url", "") or "")
+                        hit_seller = is_seller_blocked(post_author, blocked_sellers)
+                        if hit_seller:
+                            store.remember(
+                                key, group.get("name", ""), url, None, post.text, True,
+                                author=post_author, image_url=post_image,
+                            )
+                            store.record_blocked(
+                                key, group.get("name", ""), post_author, url,
+                                "黑名單", f"賣家黑名單（{hit_seller}）", None,
+                                post.short_text, image_url=post_image,
+                            )
+                            self._reset_daily_stats_if_needed()
+                            self._stats["blocked_today"] += 1
+                            continue
+
                         best_rule = None
                         best_match = None
+                        audit_candidate = None
                         for rule in group_rules:
                             result = analyze_post(post, rule)
-                            if not result.matched:
-                                continue
-                            if best_match is None or (result.price or 10**9) < (best_match.price or 10**9):
-                                best_rule, best_match = rule, result
-                        url = post.url or group["url"]
+                            if result.matched:
+                                if best_match is None or (result.price or 10**9) < (best_match.price or 10**9):
+                                    best_rule, best_match = rule, result
+                            elif audit_candidate is None and result.reason and not str(result.reason).startswith("沒有命中關鍵字"):
+                                audit_candidate = (rule, result)
                         if best_match is None:
-                            store.remember(key, group.get("name", ""), url, None, post.text, True)
+                            store.remember(
+                                key, group.get("name", ""), url, None, post.text, True,
+                                author=post_author, image_url=post_image,
+                            )
+                            if audit_candidate is not None:
+                                a_rule, a_res = audit_candidate
+                                store.record_blocked(
+                                    key, group.get("name", ""), post_author, url,
+                                    a_rule.name, a_res.reason, a_res.price,
+                                    post.short_text, image_url=post_image,
+                                )
+                                self._reset_daily_stats_if_needed()
+                                self._stats["blocked_today"] += 1
                             continue
                         if max_age > 0:
                             too_old = post.age_minutes is not None and post.age_minutes > max_age
                             unknown_without_cursor = post.age_minutes is None and cursor is None
                             if too_old or unknown_without_cursor:
-                                store.remember(key, group.get("name", ""), url, best_match.price, post.text, True)
+                                store.remember(
+                                    key, group.get("name", ""), url, best_match.price, post.text, True,
+                                    author=post_author, image_url=post_image,
+                                )
+                                age_label = f"{post.age_minutes:.0f} 分鐘前" if post.age_minutes is not None else "時間不明"
+                                store.record_blocked(
+                                    key, group.get("name", ""), post_author, url,
+                                    best_rule.name, f"超過時效上限（{age_label}）", best_match.price,
+                                    post.short_text, image_url=post_image,
+                                )
+                                self._reset_daily_stats_if_needed()
+                                self._stats["blocked_today"] += 1
                                 self.log(
                                     f"略過非 {max_age:g} 分鐘內貼文：{best_rule.name}"
                                     f"（{post.age_minutes if post.age_minutes is not None else '時間不明'}）"
                                 )
                                 continue
-                        if self.config.get("notify_mode") == "digest":
+                        if quiet_mute:
                             store.remember(
                                 key, group.get("name", ""), url, best_match.price, post.text, False,
-                                rule_name=best_rule.name,
+                                rule_name=best_rule.name, author=post_author, image_url=post_image,
+                                status="勿擾靜音",
                             )
                             store.record_price(
                                 key, best_rule.name, group.get("name", ""),
                                 best_match.price or 0, best_match.price_high,
                             )
+                            self._reset_daily_stats_if_needed()
+                            self._stats["deals_today"] += 1
+                            self.log(f"勿擾靜音（已收錄至歷史紀錄）：{best_rule.name} NT${(best_match.price or 0):,}")
+                            continue
+                        if self.config.get("notify_mode") == "digest":
+                            store.remember(
+                                key, group.get("name", ""), url, best_match.price, post.text, False,
+                                rule_name=best_rule.name, author=post_author, image_url=post_image,
+                            )
+                            store.record_price(
+                                key, best_rule.name, group.get("name", ""),
+                                best_match.price or 0, best_match.price_high,
+                            )
+                            self._reset_daily_stats_if_needed()
+                            self._stats["deals_today"] += 1
                             self.log(f"加入每日摘要：{best_rule.name} NT${best_match.price:,}")
                             continue
                         if not ready_channel:
@@ -1463,6 +1967,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             self._json({"config": APP.config, "status": APP.status()})
             return
+        if path == "/api/tray-state":
+            self._send(200, APP.tray_state_text().encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        if path == "/api/history":
+            self._json(APP.deal_history())
+            return
         if path == "/api/login/status":
             self._json(APP.login)
             return
@@ -1571,6 +2081,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(APP.fetch_post(str(data.get("url") or "")))
             elif path == "/api/test-email":
                 self._json(APP.test_email())
+            elif path == "/api/test-alert":
+                self._json(APP.test_alert())
+            elif path == "/api/deal-status":
+                self._json(APP.set_deal_status(str(data.get("key") or ""), str(data.get("status") or "")))
+            elif path == "/api/block-seller":
+                self._json(APP.block_seller(str(data.get("seller") or "")))
             elif path == "/api/start":
                 self._json(APP.start_monitor())
             elif path == "/api/stop":
@@ -1596,6 +2112,7 @@ def _open_window(url: str) -> None:
                     url,
                     str(bundle / "assets" / "logo.ico"),
                     str(DATA / "webview_profile"),
+                    CSRF_TOKEN,
                 ],
                 cwd=str(host_dir),
                 close_fds=True,
