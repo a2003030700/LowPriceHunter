@@ -67,6 +67,7 @@ def check_for_update(repo: str, timeout: int = 15) -> UpdateInfo:
         headers={
             "User-Agent": USER_AGENT,
             "Accept": "application/vnd.github+json",
+            "Cache-Control": "no-cache",
         },
     )
     try:

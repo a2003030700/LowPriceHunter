@@ -75,11 +75,41 @@ jobs:
           Get-ChildItem dist\*.zip | Select-Object Name, Length
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          # 可攜版（含一鍵安裝）＋ App 內建更新器用的更新檔
-          files: |
-            dist/LowPriceHunter-*-win64.zip
-            dist/LowPriceHunter-update.zip
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:RELEASE_TAG
+          $files = @(Get-ChildItem dist\LowPriceHunter-*-win64.zip, dist\LowPriceHunter-update.zip | Select-Object -ExpandProperty FullName)
+          if ($files.Count -lt 2) {
+            throw "缺少打包檔案：$($files -join ', ')"
+          }
+          Write-Host "準備發布 $tag，共 $($files.Count) 個檔案："
+          $files | ForEach-Object { Write-Host "  - $_" }
+
+          # 使用官方 gh CLI 原生串流上傳，避免第三方 Node action 在 Node 24 上傳大檔崩潰
+          gh release view $tag *> $null
+          $exists = ($LASTEXITCODE -eq 0)
+
+          if (-not $exists) {
+            Write-Host "建立正式 Release $tag..."
+            gh release create $tag --title $tag --generate-notes --latest
+            if ($LASTEXITCODE -ne 0) { throw "建立 Release $tag 失敗" }
+          }
+
+          foreach ($file in $files) {
+            $ok = $false
+            for ($try = 1; $try -le 3; $try++) {
+              Write-Host "上傳 $(Split-Path -Leaf $file)（第 $try 次）..."
+              gh release upload $tag $file --clobber
+              if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+              Start-Sleep -Seconds (5 * $try)
+            }
+            if (-not $ok) { throw "上傳 $file 失敗" }
+          }
+
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "設定 $tag 為 latest 失敗" }
+          gh release view $tag --json tagName,isDraft,isPrerelease,assets --jq '{tag: .tagName, draft: .isDraft, pre: .isPrerelease, assets: [.assets[].name]}'

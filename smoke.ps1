@@ -50,14 +50,21 @@ try {
 
     if ($up) {
         $html = [string]$resp.Content
-        Check "首頁含核心函式 pickGroupsForDiscovery" ($html -like "*pickGroupsForDiscovery*")
-        Check "首頁含社團自動勾選提示" ($html -like "*只會自動勾選*")
+        Check "首頁含核心函式 renderGroups" ($html -like "*renderGroups*")
+        Check "首頁含一鍵更新介面 btn-update-apply" ($html -like "*btn-update-apply*")
 
         try {
             $state = Invoke-RestMethod "$base/api/state" -TimeoutSec 5
             Check "/api/state 回應正常" ($null -ne $state -and $null -ne $state.config)
         } catch {
             Check "/api/state 回應正常" $false $_.Exception.Message
+        }
+
+        try {
+            $tray = Invoke-WebRequest "$base/api/tray-state" -UseBasicParsing -TimeoutSec 5
+            Check "/api/tray-state 回應正常" ($tray.StatusCode -eq 200 -and ([string]$tray.Content -like "*monitoring=*"))
+        } catch {
+            Check "/api/tray-state 回應正常" $false $_.Exception.Message
         }
     }
 } finally {

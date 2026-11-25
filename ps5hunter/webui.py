@@ -226,6 +226,9 @@ def load_config() -> dict:
         _write_json(CONFIG_PATH, cfg)
     for key, value in DEFAULT_CONFIG.items():
         cfg.setdefault(key, value)
+    # 舊版 v1.3.1 預設 update_repo 為空字串，自動補上官方預設 repo 避免檢查更新失效
+    if not str(cfg.get("update_repo") or "").strip():
+        cfg["update_repo"] = DEFAULT_CONFIG["update_repo"]
     return cfg
 
 
@@ -1131,15 +1134,10 @@ class App:
     def check_update(self) -> dict:
         if self.update.get("status") == "checking":
             return {"ok": False, "error": "正在檢查更新"}
-        repo = str(self.config.get("update_repo") or "").strip()
-        if not repo:
-            self.update = {
-                "status": "idle",
-                "current": __version__,
-                "available": False,
-                "message": "請先在設定填入 GitHub repo（owner/repo）",
-            }
-            return {"ok": False, "error": "尚未設定 GitHub repo"}
+        repo = str(self.config.get("update_repo") or "").strip() or str(DEFAULT_CONFIG["update_repo"])
+        if not str(self.config.get("update_repo") or "").strip():
+            self.config["update_repo"] = repo
+            save_config(self.config)
         self.update = {
             "status": "checking",
             "current": __version__,
@@ -1212,16 +1210,32 @@ class App:
         name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
         target = _desktop_dir() / name
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "LowPriceHunter-Updater/1.0"})
-            with urllib.request.urlopen(request, timeout=120) as response:
-                data = response.read(200 * 1024 * 1024 + 1)
-            if len(data) > 200 * 1024 * 1024:
-                return {"ok": False, "error": "更新檔超過 200MB"}
-            target.write_bytes(data)
+            self._download_zip_stream(url, target, timeout=180)
             self.log(f"已下載更新檔：{target}")
             return {"ok": True, "path": str(target)}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
+
+    @staticmethod
+    def _download_zip_stream(url: str, dest: Path, timeout: int = 180, max_bytes: int = 250 * 1024 * 1024) -> None:
+        """串流下載更新壓縮檔，避免大檔一次載入記憶體造成卡頓。"""
+        request = urllib.request.Request(url, headers={"User-Agent": "LowPriceHunter-Updater/1.0"})
+        total = 0
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response, tmp.open("wb") as out:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise UpdateError(f"更新檔超過 {max_bytes // (1024 * 1024)}MB 上限")
+                    out.write(chunk)
+            tmp.replace(dest)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
 
     def apply_update(self) -> dict:
         """一鍵自動套用更新：下載驗證 → 停止監控 → 脫離背景覆蓋舊版並清除暫存 → 自動重啟。"""
@@ -1237,12 +1251,7 @@ class App:
         zip_path = stage_dir / "update.zip"
         try:
             self.log(f"開始下載並驗證更新檔（v{self.update.get('latest') or '?'}）…")
-            request = urllib.request.Request(url, headers={"User-Agent": "LowPriceHunter-Updater/1.0"})
-            with urllib.request.urlopen(request, timeout=180) as response:
-                data = response.read(200 * 1024 * 1024 + 1)
-            if len(data) > 200 * 1024 * 1024:
-                raise UpdateError("更新檔超過 200MB")
-            zip_path.write_bytes(data)
+            self._download_zip_stream(url, zip_path, timeout=240)
             new_app_dir = extract_update_package(zip_path, stage_dir / "extracted")
             # 解壓驗證通過即可先刪 zip，節省空間
             zip_path.unlink(missing_ok=True)
