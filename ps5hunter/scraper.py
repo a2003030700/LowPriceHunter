@@ -14,7 +14,7 @@ import hashlib
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
@@ -35,8 +35,13 @@ class LayoutError(RuntimeError):
     """頁面結構讀不到（版面改版或被擋）。"""
 
 
+class GroupPausedError(LayoutError):
+    """社團已被管理員暫停使用。"""
+
+
 _ACTION_LABEL_SUFFIX = "這則貼文採取的動作"
 _BLOCK_TEXTS = ("你暫時被封鎖", "帳號已被封鎖", "We suspended your account", "確認你的身分")
+_PAUSED_GROUP_TEXTS = ("此社團已暫停", "管理員已暫停此社團", "This group is paused")
 
 # 這些通知不是「有新貼文」，不需要觸發掃描
 _IGNORE_NOTIF_PREFIXES = (
@@ -50,6 +55,88 @@ _INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff\u0300-\u036f\u00ad]")
 
 _CARDS_JS = """
 () => {
+  const clean = s => (s || '')
+    .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '')
+    .trim();
+  const visibleText = (node) => {
+    if (!node) return '';
+    const clone = node.cloneNode(true);
+    clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
+    return clean(clone.innerText || '');
+  };
+  const extractBodyAndComments = (card) => {
+    const authorComments = [];
+    const commentNodes = Array.from(card.querySelectorAll('div[role="article"]'));
+    for (const cn of commentNodes) {
+      const lbl = cn.getAttribute('aria-label') || '';
+      const txt = visibleText(cn);
+      if (txt && (txt.includes('作者') || lbl.includes('作者'))) {
+        authorComments.push(txt.slice(0, 300));
+      }
+    }
+    const clone = card.cloneNode(true);
+    clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
+    clone.querySelectorAll('div[role="article"]').forEach(n => n.remove());
+    let raw = (clone.innerText || '')
+      .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+    const cutMarkers = ['查看更多留言', '查看全部留言', '撰寫公開留言', '以 ', '最相關', '所有留言'];
+    for (const mk of cutMarkers) {
+      const idx = raw.indexOf('\\n' + mk);
+      if (idx > 20) raw = raw.slice(0, idx);
+    }
+    return { text: raw.trim(), authorComments };
+  };
+  const extractTime = (card) => {
+    for (const a of card.querySelectorAll('a[aria-label]')) {
+      const lbl = clean(a.getAttribute('aria-label') || '');
+      if (!lbl || lbl.length > 24) continue;
+      if (/^(大約\\s*)?(\\d+\\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\\d{1,2}月\\d{1,2}日)/.test(lbl)) {
+        return lbl;
+      }
+    }
+    for (const e of card.querySelectorAll('span,div,a')) {
+      if (e.children.length > 2) continue;
+      if (e.getAttribute('aria-hidden') === 'true') continue;
+      const st = window.getComputedStyle(e);
+      if (st && (st.display === 'none' || st.visibility === 'hidden' || st.fontSize === '0px')) continue;
+      if (e.offsetWidth === 0 && e.offsetHeight === 0) continue;
+      const t = clean(e.innerText || '');
+      if (!t || t.length > 16) continue;
+      if (/^(大約\\s*)?(\\d+\\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\\d{1,2}月\\d{1,2}日)前?$/.test(t)) {
+        return t;
+      }
+    }
+    return '';
+  };
+  const extractListing = (card) => {
+    let listingTitle = '';
+    let listingPrice = '';
+    let listingOrigPrice = '';
+    let listingStatus = '';
+    const commerceLink = card.querySelector('a[href*="/commerce/listing/"], a[href*="product_id="]');
+    const scope = commerceLink ? (commerceLink.closest('div') || commerceLink) : card;
+    const scopeText = visibleText(scope);
+    const statusMatch = scopeText.match(/(已售出|缺貨|已下架|OUT OF STOCK|SOLD)/i);
+    if (statusMatch) listingStatus = statusMatch[1];
+    for (const el of scope.querySelectorAll('del, s, span')) {
+      const st = window.getComputedStyle(el);
+      if (el.tagName === 'DEL' || el.tagName === 'S' || (st && (st.textDecorationLine || '').includes('line-through'))) {
+        const t = clean(el.innerText || '');
+        if (/^(NT\\$?|\\$)[\\d,]+/.test(t)) { listingOrigPrice = t; break; }
+      }
+    }
+    if (commerceLink) {
+      const lines = visibleText(commerceLink).split(/\\n+/).map(x => x.trim()).filter(Boolean);
+      for (const ln of lines) {
+        if (!listingPrice && (/^(NT\\$?|\\$)[\\d,]+/.test(ln) || ln === '免費')) {
+          listingPrice = ln;
+        } else if (!listingTitle && !/^(已售出|缺貨|發訊息|傳送訊息)$/.test(ln) && ln.length >= 2) {
+          listingTitle = ln;
+        }
+      }
+    }
+    return { listingTitle, listingPrice, listingOrigPrice, listingStatus };
+  };
   const out = [];
   const buttons = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
     .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
@@ -61,23 +148,12 @@ _CARDS_JS = """
       card = card.parentElement;
     }
     if (!card) continue;
-    const clone = card.cloneNode(true);
-    clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-    const text = (clone.innerText || '')
-      .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
-    // 抓這張卡片自己的時間（8分鐘、1小時、昨天…）
-    let age = '';
-    for (const e of card.querySelectorAll('span,div,a')) {
-      if (e.children.length > 1) continue;
-      const t = (e.innerText || '')
-        .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '')
-        .trim();
-      if (!t || t.length > 12) continue;
-      if (/^(大約\\s*)?(\\d+\\s*(分鐘|小時|天|週|星期|個月|年)|昨天|剛剛)前?$/.test(t)) {
-        age = t;
-        break;
-      }
-    }
+    const { text, authorComments } = extractBodyAndComments(card);
+    const age = extractTime(card);
+    const listing = extractListing(card);
+    let author = '';
+    const headLink = card.querySelector('h2 a, h3 a, h4 a, strong a, strong');
+    if (headLink) author = clean(headLink.innerText || '').slice(0, 60);
     const a = card.querySelector('a[href*="set=gm."]');
     let pid = null;
     if (a) { const m = a.href.match(/gm\\.(\\d+)/); if (m) pid = m[1]; }
@@ -88,7 +164,19 @@ _CARDS_JS = """
       const mp = card.querySelector('a[href*="product_id="]');
       if (mp) { const m = mp.href.match(/product_id=(\\d+)/); if (m) commerce = m[1]; }
     }
-    out.push({ id: i, text: text, pid: pid, commerce: commerce, age: age });
+    out.push({
+      id: i,
+      text: text,
+      author: author,
+      author_comments: authorComments,
+      listing_title: listing.listingTitle,
+      listing_price: listing.listingPrice,
+      listing_original_price: listing.listingOrigPrice,
+      listing_status: listing.listingStatus,
+      pid: pid,
+      commerce: commerce,
+      age: age
+    });
     i++;
   }
   return out;
@@ -170,7 +258,13 @@ _CARD_TEXT_JS = """
   if (!card) return '';
   const clone = card.cloneNode(true);
   clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-  return (clone.innerText || '').replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+  clone.querySelectorAll('div[role="article"]').forEach(n => n.remove());
+  let raw = (clone.innerText || '').replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+  for (const mk of ['查看更多留言', '查看全部留言', '撰寫公開留言', '以 ', '最相關', '所有留言']) {
+    const pos = raw.indexOf('\\n' + mk);
+    if (pos > 20) raw = raw.slice(0, pos);
+  }
+  return raw.trim();
 }
 """ % _ACTION_LABEL_SUFFIX
 
@@ -213,7 +307,7 @@ def _post_text_from_title(title: str) -> str:
 
 
 def _relative_days(text: str) -> float | None:
-    """把「3小時前」「2天前」「8年前」轉成天數。"""
+    """把「3小時前」「2天前」「11月24日」轉成天數。"""
     if not text:
         return None
     if "剛剛" in text:
@@ -221,22 +315,31 @@ def _relative_days(text: str) -> float | None:
     if "昨天" in text:
         return 1.0
     m = re.search(r"(\d+)\s*(分鐘|小時|天|日|週|星期|個月|月|年)", text)
-    if not m:
-        return None
-    n = int(m.group(1))
-    unit = m.group(2)
-    if unit == "分鐘":
-        return n / 1440.0
-    if unit == "小時":
-        return n / 24.0
-    if unit in ("天", "日"):
-        return float(n)
-    if unit in ("週", "星期"):
-        return n * 7.0
-    if unit in ("個月", "月"):
-        return n * 30.0
-    if unit == "年":
-        return n * 365.0
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if unit == "分鐘":
+            return n / 1440.0
+        if unit == "小時":
+            return n / 24.0
+        if unit in ("天", "日"):
+            return float(n)
+        if unit in ("週", "星期"):
+            return n * 7.0
+        if unit in ("個月", "月"):
+            return n * 30.0
+        if unit == "年":
+            return n * 365.0
+    md = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
+    if md:
+        now = datetime.now()
+        try:
+            dt = datetime(now.year, int(md.group(1)), int(md.group(2)))
+            if dt > now + timedelta(days=2):
+                dt = dt.replace(year=now.year - 1)
+            return max(0.0, (now - dt).total_seconds() / 86400.0)
+        except ValueError:
+            return None
     return None
 
 
@@ -265,10 +368,18 @@ class Post:
     card_id: int | None = None
     age_minutes: float | None = None
     created_at: datetime | None = None
+    author: str = ""
+    listing_title: str = ""
+    listing_price: str = ""
+    listing_original_price: str = ""
+    listing_status: str = ""
+    author_comments: list[str] = field(default_factory=list)
 
     @property
     def short_text(self) -> str:
-        return re.sub(r"\s+", " ", self.text).strip()
+        prefix = f"{self.listing_title} {self.listing_price} ".strip()
+        full = f"{prefix}｜{self.text}" if prefix and prefix not in self.text else self.text
+        return re.sub(r"\s+", " ", full).strip()
 
 
 class FBScraper:
@@ -393,6 +504,8 @@ class FBScraper:
         group_url: str,
         max_posts: int = 80,
         resolve_when: Callable[[str], bool] | None = None,
+        resolve_when_post: Callable[[Post], bool] | None = None,
+        expand_keywords: list[str] | None = None,
         stop_at_post_id: str | None = None,
         stop_at_ts: datetime | None = None,
         max_scrolls: int | None = None,
@@ -405,6 +518,14 @@ class FBScraper:
         time.sleep(1.5)
         self._check_blocked(page)
         self._dismiss_popups(page)
+        try:
+            head_body = page.inner_text("body", timeout=3000)[:2000]
+            if any(marker in head_body for marker in _PAUSED_GROUP_TEXTS):
+                raise GroupPausedError(f"社團已被管理員暫停（{group_name}）")
+        except GroupPausedError:
+            raise
+        except Exception:
+            pass
 
         try:
             page.wait_for_selector(
@@ -417,6 +538,8 @@ class FBScraper:
                 body = page.inner_text("body")[:300]
             except Exception:
                 pass
+            if any(marker in body for marker in _PAUSED_GROUP_TEXTS):
+                raise GroupPausedError(f"社團已被管理員暫停（{group_name}）")
             raise LayoutError(f"讀不到社團貼文（{group_name}）。頁面片段：{body!r}")
 
         collected: dict[str, Post] = {}
@@ -433,8 +556,10 @@ class FBScraper:
                 text = _INVISIBLE_RE.sub("", item.get("text") or "").strip()
                 if not text or len(text) > 6000:
                     continue
-                if expanded < 20:
-                    new_text = self._expand_see_more(page, item.get("id"), text)
+                if expanded < 60:
+                    new_text = self._expand_see_more(
+                        page, item.get("id"), text, expand_keywords=expand_keywords
+                    )
                     if new_text != text:
                         text = new_text
                         expanded += 1
@@ -478,23 +603,38 @@ class FBScraper:
                     card_id=item.get("id"),
                     age_minutes=age_minutes,
                     created_at=created_at,
+                    author=str(item.get("author") or ""),
+                    listing_title=str(item.get("listing_title") or ""),
+                    listing_price=str(item.get("listing_price") or ""),
+                    listing_original_price=str(item.get("listing_original_price") or ""),
+                    listing_status=str(item.get("listing_status") or ""),
+                    author_comments=[
+                        str(c) for c in (item.get("author_comments") or []) if str(c).strip()
+                    ],
                 )
                 collected[key] = post
-                # 立刻用「文字」重新定位卡片（索引會隨虛擬清單變動，不能沿用）
-                if url is None and resolve_when:
+                should_resolve = False
+                if url is None:
                     try:
-                        if resolve_when(text):
-                            link = self.resolve_post_link(post)
-                            if link:
-                                post.url = link
-                                m = re.search(r"/(?:posts|permalink)/(\d+)", link)
+                        if resolve_when_post is not None:
+                            should_resolve = bool(resolve_when_post(post))
+                        elif resolve_when is not None:
+                            should_resolve = bool(resolve_when(text))
+                    except Exception:
+                        should_resolve = False
+                if url is None and should_resolve:
+                    try:
+                        link = self.resolve_post_link(post)
+                        if link:
+                            post.url = link
+                            m = re.search(r"/(?:posts|permalink)/(\d+)", link)
+                            if m:
+                                post.post_id = m.group(1)
+                                post.key = f"{group_id}_{post.post_id}"
+                            else:
+                                m = re.search(r"/share/p/([A-Za-z0-9_-]+)", link)
                                 if m:
-                                    post.post_id = m.group(1)
-                                    post.key = f"{group_id}_{post.post_id}"
-                                else:
-                                    m = re.search(r"/share/p/([A-Za-z0-9_-]+)", link)
-                                    if m:
-                                        post.key = f"{group_id}_s{m.group(1)}"
+                                    post.key = f"{group_id}_s{m.group(1)}"
                     except Exception:
                         pass
                 if len(collected) >= max_posts:
@@ -527,12 +667,23 @@ class FBScraper:
         posts = list(collected.values())[:max_posts]
         return posts
 
-    def _expand_see_more(self, page, idx, text: str) -> str:
+    def _expand_see_more(
+        self,
+        page,
+        idx,
+        text: str,
+        expand_keywords: list[str] | None = None,
+    ) -> str:
         if idx is None:
             return text
         if not any(marker in text for marker in ("查看更多", "顯示更多", "See more")):
             return text
-        if not re.search(r"售|賣|價|[$＄]|元|PS5|主機|光碟|數位", text, re.IGNORECASE):
+        has_trade_hint = bool(
+            re.search(r"售|賣|卖|價|价|[$＄]|元|NT|面交|自取|出清|割愛|拆售|合售", text, re.IGNORECASE)
+        )
+        low = text.lower()
+        has_rule_hint = any(k.lower() in low for k in (expand_keywords or []) if k)
+        if not has_trade_hint and not has_rule_hint:
             return text
         try:
             if page.evaluate(_EXPAND_CARD_JS, idx):

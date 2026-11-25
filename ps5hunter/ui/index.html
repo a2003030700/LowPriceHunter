@@ -167,13 +167,13 @@
     <details style="margin-top:14px;">
       <summary style="cursor:pointer;font-size:13px;color:#2563eb;font-weight:600;">這些欄位怎麼用？（點開看說明）</summary>
       <div class="hint" style="margin-top:10px;line-height:1.9;">
-        <b>關鍵字</b>：產品名稱，任何一個出現就會進入判斷。<br>
-        <b>必須包含</b>：產品的類型字，至少要出現一個；用來避免「平台／分類字」被當成商品。<br>
-        <b>排除詞</b>：出現就跳過，例如「遊戲片、手把、徵求、已售」。<br>
-        <b>價格需靠近產品字</b>：價格與產品字的距離上限（字數），越小越嚴格。<br>
-        <b>排除多項商品清單</b>：貼文有 3 個以上價格、又沒有合售字時，視為商品清單跳過。<br>
-        <b>合售／整組等字</b>：出現這些字就允許一篇貼文列多個價格。<br>
-        <b>最低／最高價</b>：合理價格範圍，範圍外的價格不列入判斷。<br>
+        <b>關鍵字</b>：產品名稱，任何一個出現就會進入判斷（純英文自動詞界比對）。<br>
+        <b>必須包含</b>：產品的類型／規格字，必須出現在主體區（不含相容性說明與 #hashtag）。<br>
+        <b>全域排除詞</b>：整篇出現就跳過，適合放「故障機、空盒、不要的子型號（如 PS5 Pro）、已售出」；內建否定保護，不會誤殺「售出不退」或「收納包」。<br>
+        <b>主體／配件排除詞</b>：只有當「賣的主體本身」是這些配件時才排除，若主商品「附贈手把／遊戲片」不會誤殺！<br>
+        <b>忽略型號數字</b>：列出該品類常見的型號／容量數字（如 1218、2018、2118），防止裸數字被誤當成價格。<br>
+        <b>價格需靠近產品字</b>：針對非結構化段落，價格與產品字的距離上限（字數）；斜線對應、欄位對應與商品卡會自動精準綁定。<br>
+        <b>最低／最高價</b>：只針對「已綁定目標商品」的實際售價判定，不會再把多品項貼文裡的便宜配件價誤當成主機價。<br>
         <b>測試方式</b>：把一篇貼文貼到下面的「規則測試器」，它會告訴你是哪一關擋掉的。
       </div>
     </details>
@@ -679,14 +679,26 @@ function addRule(rule){
   wrap.innerHTML = `
     <div class="top"><input class="r-name" placeholder="物品名稱，例如 iPhone 15" value="${rule.name||''}"><button class="del">刪除</button></div>
     <div class="row">
-      <div><label>關鍵字（逗號分隔）</label><input class="r-kw" placeholder="iPhone 15, iPhone 16" value="${(rule.keywords||[]).join(', ')}"></div>
-      <div><label>排除詞（逗號分隔）</label><input class="r-ex" value="${(rule.exclude||[]).join(', ')}"></div>
+      <div><label>關鍵字（逗號分隔）</label><input class="r-kw" placeholder="PS5, PlayStation 5" value="${(rule.keywords||[]).join(', ')}"></div>
+      <div><label>全域排除詞（整篇排除，逗號分隔）</label><input class="r-ex" placeholder="PS5 Pro, 故障機, 藍燈死機, 空盒" value="${(rule.exclude||[]).join(', ')}"></div>
+    </div>
+    <div class="row">
+      <div>
+        <label>主體／配件排除詞（不誤殺附贈品，逗號分隔）</label>
+        <input class="r-acc-ex" placeholder="遊戲片, 手把, 控制器, 散熱器, SSD, PS Portal" value="${(rule.accessory_exclude||[]).join(', ')}">
+        <p class="hint">單賣配件時排除；但主機貼文寫「附手把、贈遊戲片」不會誤殺。</p>
+      </div>
+      <div>
+        <label>忽略型號數字（防誤當價格，逗號分隔）</label>
+        <input class="r-ign-num" placeholder="1018, 1118, 1218, 2018, 2118, 2200" value="${(rule.ignore_numbers||[]).join(', ')}">
+        <p class="hint">這些裸數字（無 $ 或 元 時）不會被誤認成價格。</p>
+      </div>
     </div>
     <div class="row">
       <div>
         <label>必須包含（逗號分隔，至少一個）</label>
-        <input class="r-req" placeholder="128G, 256G, 512G, Pro" value="${(rule.require||[]).join(', ')}">
-        <p class="hint">產品的「類型字」，至少出現一個才算。用來避免只看到「平台／分類字」就通知。</p>
+        <input class="r-req" placeholder="主機, 光碟版, 數位版, Slim, 1218, 2018" value="${(rule.require||[]).join(', ')}">
+        <p class="hint">產品的「類型字」，至少出現一個才算（會自動排除相容性敘述與 #hashtag）。</p>
       </div>
     </div>
     <div class="row">
@@ -704,6 +716,8 @@ function addRule(rule){
     <div class="inline" style="margin-top:6px">
       <label><input type="checkbox" class="r-near" ${rule.price_near_keyword?'checked':''}> 價格要靠近產品字</label>
       <label><input type="checkbox" class="r-multi" ${rule.reject_multi_item?'checked':''}> 排除多項商品清單</label>
+      <label><input type="checkbox" class="r-nonsale" ${rule.exclude_non_sale!==false?'checked':''}> 排除非出售文（徵求／換物／詢問／代購）</label>
+      <label><input type="checkbox" class="r-twd" ${rule.require_taiwan_currency!==false?'checked':''}> 只限台幣（排除外幣／海外）</label>
     </div>
     <div class="row">
       <div><label>最低價</label><input class="r-min" type="number" value="${rule.min_price??0}"></div>
@@ -846,14 +860,18 @@ function collectRules(){
     const name = r.querySelector('.r-name').value.trim();
     const kws = r.querySelector('.r-kw').value.split(',').map(x=>x.trim()).filter(Boolean);
     const exs = r.querySelector('.r-ex').value.split(',').map(x=>x.trim()).filter(Boolean);
+    const accExs = r.querySelector('.r-acc-ex').value.split(',').map(x=>x.trim()).filter(Boolean);
+    const ignNums = r.querySelector('.r-ign-num').value.split(',').map(x=>x.trim()).filter(Boolean);
     const reqs = r.querySelector('.r-req').value.split(',').map(x=>x.trim()).filter(Boolean);
     const bundle = r.querySelector('.r-bundle').value.split(',').map(x=>x.trim()).filter(Boolean);
     if (!name || !kws.length) return;
     rules.push({
-      name, keywords:kws, exclude:exs, require:reqs,
+      name, keywords:kws, exclude:exs, accessory_exclude:accExs, ignore_numbers:ignNums, require:reqs,
       price_near_keyword: r.querySelector('.r-near').checked,
       near_distance: parseInt(r.querySelector('.r-dist').value||'60',10),
       reject_multi_item: r.querySelector('.r-multi').checked,
+      exclude_non_sale: r.querySelector('.r-nonsale').checked,
+      require_taiwan_currency: r.querySelector('.r-twd').checked,
       bundle_words: bundle,
       min_price: parseInt(r.querySelector('.r-min').value||'0',10),
       max_price: parseInt(r.querySelector('.r-max').value||'100000',10)
@@ -1044,6 +1062,8 @@ el('btn-test-rule').onclick = async ()=>{
     const risk = (x.risk_words || []).length ? '⚠️ 高風險：' + x.risk_words.join('、') : '';
     const meta = [
       x.reason,
+      x.price_source ? '綁定：' + x.price_source : '',
+      x.is_split_sale ? '拆售價' : '',
       dist,
       x.price_raw ? '片段：' + x.price_raw : '',
       x.price_confidence ? '信心 ' + x.price_confidence : '',
@@ -1223,7 +1243,7 @@ el('language').onchange = async ()=>{
 };
 
 let loginChecked = false;
-const DEFAULT_EXCLUDES = ['已售出', '售出', '已保留', '已成交', 'sold', '已下架'];
+const DEFAULT_EXCLUDES = ['已售出', '暫售', '已保留', '已成交', 'sold', '已下架', '缺貨'];
 async function checkLogin(){
   if (loginChecked) return;
   loginChecked = true;

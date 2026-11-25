@@ -54,8 +54,8 @@ class AssetTest(unittest.TestCase):
 class CheckTest(unittest.TestCase):
     def test_available(self):
         payload = {
-            "tag_name": "v1.2.0",
-            "html_url": "https://github.com/a/b/releases/tag/v1.2.0",
+            "tag_name": "v1.4.0",
+            "html_url": "https://github.com/a/b/releases/tag/v1.4.0",
             "body": "notes",
             "published_at": "2026-11-23T00:00:00Z",
             "assets": [
@@ -65,7 +65,7 @@ class CheckTest(unittest.TestCase):
         with patch("ps5hunter.updater.urllib.request.urlopen", return_value=FakeResponse(payload)):
             info = check_for_update("a/b")
         self.assertTrue(info.available)
-        self.assertEqual(info.latest, "1.2.0")
+        self.assertEqual(info.latest, "1.4.0")
         self.assertEqual(info.asset_url, "https://x/y.zip")
 
     def test_up_to_date(self):

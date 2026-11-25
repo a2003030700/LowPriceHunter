@@ -30,7 +30,7 @@ from .config import ROOT, load_dotenv
 from .db import Store
 from . import __version__
 from .updater import UpdateError, check_for_update
-from .generic import analyze_detail, analyze_text, find_risk_words, rule_from_dict, Rule
+from .generic import analyze_detail, analyze_post, analyze_text, find_risk_words, rule_from_dict, Rule
 from .notifier import (
     build_digest_message,
     build_generic_message,
@@ -73,7 +73,18 @@ def _global_key(post) -> str:
             return "p:" + m.group(1)
         return "u:" + clean
     return "t:" + hashlib.sha1(post.short_text.encode("utf-8")).hexdigest()
-from .scraper import AuthError, CheckpointError, FBScraper, LayoutError
+def _content_fingerprint(post) -> str | None:
+    """跨社團同作者複製貼文去重指紋。"""
+    author = re.sub(r"\s+", "", (getattr(post, "author", "") or "").lower())
+    title = re.sub(r"\s+", "", (getattr(post, "listing_title", "") or "").lower())
+    body = re.sub(r"\s+", "", (getattr(post, "text", "") or "").lower())[:200]
+    core = f"{author}|{title}|{body}"
+    if len(title) + len(body) < 16:
+        return None
+    return "fp:" + hashlib.sha1(core.encode("utf-8")).hexdigest()[:24]
+
+
+from .scraper import AuthError, CheckpointError, FBScraper, GroupPausedError, LayoutError
 
 DATA = ROOT / "data"
 DATA.mkdir(parents=True, exist_ok=True)
@@ -902,6 +913,10 @@ class App:
                             stop_ts = datetime.fromisoformat(cursor["last_seen_ts"])
                         except ValueError:
                             stop_ts = None
+                    expand_kws: list[str] = []
+                    for r in group_rules:
+                        expand_kws.extend(r.keywords)
+                        expand_kws.extend(r.require)
                     try:
                         posts = fb.scrape_group(
                             group.get("name") or "社團",
@@ -909,8 +924,12 @@ class App:
                             max_posts=int(self.config.get("max_posts_per_group") or 80),
                             stop_at_post_id=(cursor or {}).get("last_post_id"),
                             stop_at_ts=stop_ts,
-                            resolve_when=lambda t, gr=group_rules: any(analyze_text(t, r).matched for r in gr),
+                            expand_keywords=expand_kws,
+                            resolve_when_post=lambda p, gr=group_rules: any(analyze_post(p, r).matched for r in gr),
                         )
+                    except GroupPausedError:
+                        self.log(f"跳過 {group.get('name')}：社團已被管理員暫停")
+                        continue
                     except (LayoutError, CheckpointError) as exc:
                         self.log(f"跳過 {group.get('name')}：{exc}")
                         continue
@@ -944,7 +963,7 @@ class App:
                         best_rule = None
                         best_match = None
                         for rule in group_rules:
-                            result = analyze_text(post.text, rule)
+                            result = analyze_post(post, rule)
                             if not result.matched:
                                 continue
                             if best_match is None or (result.price or 10**9) < (best_match.price or 10**9):
@@ -953,15 +972,16 @@ class App:
                         if best_match is None:
                             store.remember(key, group.get("name", ""), url, None, post.text, True)
                             continue
-                        if max_age > 0 and (
-                            post.age_minutes is None or post.age_minutes > max_age
-                        ):
-                            store.remember(key, group.get("name", ""), url, best_match.price, post.text, True)
-                            self.log(
-                                f"略過非 {max_age:g} 分鐘內貼文：{best_rule.name}"
-                                f"（{post.age_minutes if post.age_minutes is not None else '時間不明'}）"
-                            )
-                            continue
+                        if max_age > 0:
+                            too_old = post.age_minutes is not None and post.age_minutes > max_age
+                            unknown_without_cursor = post.age_minutes is None and cursor is None
+                            if too_old or unknown_without_cursor:
+                                store.remember(key, group.get("name", ""), url, best_match.price, post.text, True)
+                                self.log(
+                                    f"略過非 {max_age:g} 分鐘內貼文：{best_rule.name}"
+                                    f"（{post.age_minutes if post.age_minutes is not None else '時間不明'}）"
+                                )
+                                continue
                         if self.config.get("notify_mode") == "digest":
                             store.remember(
                                 key, group.get("name", ""), url, best_match.price, post.text, False,
@@ -986,7 +1006,8 @@ class App:
                             "rule": best_rule,
                             "match": best_match,
                             "global": _global_key(post),
-                            "risk": find_risk_words(post.text),
+                            "fp": _content_fingerprint(post),
+                            "risk": find_risk_words(post.short_text),
                         })
                     group_states.append({
                         "name": group.get("name", ""),
@@ -997,11 +1018,12 @@ class App:
                         "pending": pending,
                     })
 
-                # 先掃完所有社團，再依 post_id 做全局去重，同一篇只寄一封
+                # 先掃完所有社團，再依 post_id / 內容指紋做全局去重，同一篇只寄一封
                 by_global: dict[str, list[dict]] = {}
                 for state in group_states:
                     for item in state["pending"]:
-                        by_global.setdefault(item["global"], []).append(item)
+                        dedup_key = item.get("fp") or item["global"]
+                        by_global.setdefault(dedup_key, []).append(item)
 
                 failed_globals: set[str] = set()
                 for gkey, items in by_global.items():
@@ -1017,6 +1039,9 @@ class App:
                                 rule_name=item["rule"].name,
                             )
                         continue
+                    for item in items:
+                        if item["global"] != gkey:
+                            store.remember_global(item["global"], sources)
                     primary = min(
                         items,
                         key=lambda x: (x["match"].price or 10**9, x["post"].age_minutes or 0),
@@ -1094,7 +1119,10 @@ class App:
                         self.log("通知失敗：沒有任何渠道成功，游標暫不推進")
 
                 for state in group_states:
-                    failed = any(item["global"] in failed_globals for item in state["pending"])
+                    failed = any(
+                        (item.get("fp") or item["global"]) in failed_globals
+                        for item in state["pending"]
+                    )
                     if state["ok"] and not failed:
                         store.set_cursor(state["gid"], state["newest_id"], state["newest_ts"])
                     else:
@@ -1344,10 +1372,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             elif path == "/api/test-text":
                 text = str(data.get("text") or "")
+                listing_title = str(data.get("listing_title") or "")
+                listing_price = str(data.get("listing_price") or "")
+                listing_status = str(data.get("listing_status") or "")
+                author_comments = data.get("author_comments") or None
                 results = []
                 for raw in data.get("rules") or []:
                     rule = rule_from_dict(raw)
-                    detail = analyze_detail(text, rule)
+                    detail = analyze_detail(
+                        text,
+                        rule,
+                        listing_title=listing_title,
+                        listing_price=listing_price,
+                        listing_status=listing_status,
+                        author_comments=author_comments,
+                    )
                     detail["name"] = rule.name
                     results.append(detail)
                 self._json({"ok": True, "results": results})
