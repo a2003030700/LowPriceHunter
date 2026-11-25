@@ -146,10 +146,10 @@
       <button class="btn ghost" id="btn-discover">抓取我已加入的社團</button>
       <span class="status-line" id="discover-status"></span>
     </div>
-    <p class="hint">抓取後會用目前 Facebook 帳號的社團取代清單；切換帳號後請重新抓取。</p>
-    <p class="hint">只會自動勾選「名稱符合規則關鍵字」的社團（例如規則含 PS5），其餘預設不勾選。</p>
+    <p class="hint">抓取後會列出目前 Facebook 帳號已加入的社團，預設全部不勾選，請自行勾選要監控的社團；勾選結果會與下方「各社團套用哪些規則」即時同步。</p>
     <div class="actions" style="margin-top:10px">
       <input id="group-search" placeholder="搜尋社團名稱或網址…" style="flex:1;min-width:220px">
+      <button class="btn ghost" id="btn-clear-groups" type="button">全部取消勾選</button>
       <span class="status-line" id="group-search-count"></span>
       <span class="status-line" id="group-selected-count"></span>
     </div>
@@ -737,23 +737,41 @@ function addRule(rule){
   renderMatrix();
 }
 
+const matrixState = new Map();
+
+function syncMatrixStateFromDom(){
+  document.querySelectorAll('#matrix tr[data-group-url]').forEach(tr=>{
+    const url = tr.dataset.groupUrl;
+    const checked = new Set([...tr.querySelectorAll('.mx')].filter(c=>c.checked).map(c=>c.dataset.rule));
+    matrixState.set(url, checked);
+  });
+}
+
 function renderGroups(){
   const list = el('group-list');
   list.innerHTML = '';
   const discovered = (state.discovered || []);
-  if (!discovered.length) { list.innerHTML = '<div class="hint">按上面按鈕抓取，或直接在下面貼社團網址。</div>'; }
-  const selected = new Set((state.config.groups||[]).map(g=>g.url));
-  discovered.forEach(g=>{
+  const savedGroups = (state.config && state.config.groups) || [];
+  const selected = new Set(savedGroups.map(g=>g.url));
+  // 尚未重新抓取時，直接把已儲存的監控社團以名稱＋勾選框顯示在清單中，與下方規則矩陣保持一致
+  const displayList = discovered.length ? discovered : savedGroups;
+  if (!displayList.length) {
+    list.innerHTML = '<div class="hint">按上面按鈕抓取，或直接在下面貼社團網址。</div>';
+  }
+  displayList.forEach(g=>{
     const lab = document.createElement('label');
     const cb = document.createElement('input');
-    cb.type='checkbox'; cb.checked = selected.has(g.url); cb.dataset.url=g.url; cb.dataset.name=g.name;
-    cb.onchange = ()=>{ updateSelectedCount(); renderMatrix(); };
+    cb.type='checkbox';
+    cb.checked = discovered.length ? selected.has(g.url) : true;
+    cb.dataset.url=g.url; cb.dataset.name=g.name;
+    cb.onchange = ()=>{ syncMatrixStateFromDom(); updateSelectedCount(); renderMatrix(); };
     lab.dataset.search = (g.name + ' ' + g.url).toLowerCase();
     lab.appendChild(cb); lab.appendChild(document.createTextNode(g.name + '  ' + g.url));
     list.appendChild(lab);
   });
   applyGroupFilter();
-  const manual = (state.config.groups||[]).filter(g=>!discovered.some(d=>d.url===g.url)).map(g=>g.url).join('\n');
+  const displayUrls = new Set(displayList.map(d=>d.url));
+  const manual = savedGroups.filter(g=>!displayUrls.has(g.url)).map(g=>g.url).join('\n');
   el('manual-groups').value = manual;
   updateSelectedCount();
   renderMatrix();
@@ -804,46 +822,23 @@ function selectedGroups(){
   return groups;
 }
 
-// 抓取社團後，只自動勾選「名稱符合規則名稱或關鍵字」的社團。
-// 其餘（例如原神、家具社團）預設不勾，避免使用者要一個一個取消。
+// 抓取社團後，一律預設全部不勾選，由使用者自行挑選要監控的社團
 function pickGroupsForDiscovery(discovered, previousList, ruleDefs){
-  const previous = new Map((previousList || []).map(g => [g.url, g]));
-  const kws = [];
-  (ruleDefs || []).forEach(r => {
-    const n = String(r.name || '').trim().toLowerCase();
-    if (n) kws.push(n);
-    (r.keywords || []).forEach(k => {
-      const v = String(k || '').trim().toLowerCase();
-      if (v) kws.push(v);
-    });
-  });
-  const prevUrls = new Set(previous.keys());
-  // 舊版會把全部社團寫進設定；這種「幾乎全選」的狀態視為未選擇，重新依關鍵字挑
-  const looksLikeSelectAll = discovered.length > 0 && prevUrls.size >= discovered.length * 0.9;
-  const matchesKeyword = d => {
-    if (!kws.length) return false;
-    const hay = String(d.name || '').toLowerCase();
-    return kws.some(k => hay.includes(k));
-  };
-  return discovered
-    .filter(d => (prevUrls.has(d.url) && !looksLikeSelectAll) || matchesKeyword(d))
-    .map(d => {
-      const old = previous.get(d.url);
-      const ruleNames = (ruleDefs || []).map(r => r.name).filter(Boolean);
-      return old ? Object.assign({}, old, { name: d.name, url: d.url })
-                 : { name: d.name, url: d.url, rules: ruleNames };
-    });
+  void discovered; void previousList; void ruleDefs;
+  return [];
 }
 
 function renderMatrix(){
+  syncMatrixStateFromDom();
   const rules = currentRuleNames();
   const groups = selectedGroups();
   const box = el('matrix');
-  if (!groups.length || !rules.length) { box.innerHTML = '<div class="hint">先選擇社團並新增規則。</div>'; return; }
+  if (!groups.length || !rules.length) { box.innerHTML = '<div class="hint">請先在上方勾選要監控的社團並新增規則。</div>'; return; }
   let html = '<table class="matrix"><tr><th>社團</th>' + rules.map(r=>'<th>'+esc(r)+'</th>').join('') + '</tr>';
   groups.forEach(g=>{
+    const inMem = matrixState.has(g.url) ? matrixState.get(g.url) : null;
     const saved = (state.config.groups||[]).find(x=>x.url===g.url);
-    const list = (saved && Array.isArray(saved.rules)) ? saved.rules : null;
+    const list = inMem !== null ? [...inMem] : ((saved && Array.isArray(saved.rules)) ? saved.rules : null);
     html += '<tr data-group-url="'+esc(g.url)+'"><td class="gname">'+esc(g.name)+'</td>';
     rules.forEach(r=>{
       const checked = list === null ? true : list.includes(r);
@@ -852,6 +847,9 @@ function renderMatrix(){
     html += '</tr>';
   });
   box.innerHTML = html + '</table>';
+  box.querySelectorAll('.mx').forEach(cb=>{
+    cb.onchange = ()=>{ syncMatrixStateFromDom(); };
+  });
 }
 
 function collectRules(){
@@ -889,13 +887,19 @@ function collectChannels(){
 }
 
 function collect(){
-  const groups = selectedGroups();
-  document.querySelectorAll('#matrix tr[data-group-url]').forEach(tr=>{
-    const target = groups.find(g=>g.url===tr.dataset.groupUrl);
-    if (!target) return;
-    target.rules = [...tr.querySelectorAll('.mx')].filter(c=>c.checked).map(c=>c.dataset.rule);
-  });
+  syncMatrixStateFromDom();
   const rules = collectRules();
+  const groups = selectedGroups().map(g=>{
+    const tr = document.querySelector('#matrix tr[data-group-url="' + CSS.escape(g.url) + '"]');
+    if (tr) {
+      g.rules = [...tr.querySelectorAll('.mx')].filter(c=>c.checked).map(c=>c.dataset.rule);
+    } else if (matrixState.has(g.url)) {
+      g.rules = [...matrixState.get(g.url)];
+    } else {
+      g.rules = rules.map(r=>r.name);
+    }
+    return g;
+  }).filter(g=>!rules.length || (g.rules && g.rules.length > 0));
   return {
     groups, rules,
     email: { to: el('email-to').value.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean), mode: 'bot' },
@@ -973,6 +977,13 @@ el('btn-logout').onclick = async ()=>{
 
 el('group-search').addEventListener('input', applyGroupFilter);
 el('manual-groups').addEventListener('input', ()=>{ updateSelectedCount(); renderMatrix(); });
+el('btn-clear-groups').onclick = ()=>{
+  document.querySelectorAll('#group-list input[type=checkbox]').forEach(cb=>{ cb.checked = false; });
+  el('manual-groups').value = '';
+  matrixState.clear();
+  updateSelectedCount();
+  renderMatrix();
+};
 
 el('btn-discover').onclick = async ()=>{
   const r = await api('/api/discover', {});
@@ -984,14 +995,13 @@ el('btn-discover').onclick = async ()=>{
       clearInterval(timer);
       state.discovered = s.status.discovered || [];
       if (state.discovered.length) {
-        state.config.groups = pickGroupsForDiscovery(state.discovered, state.config.groups, collectRules());
+        // 抓出來的社團預設全部不勾選，且與下方「各社團套用哪些規則」保持同步
+        state.config.groups = [];
+        matrixState.clear();
         el('manual-groups').value = '';
         renderGroups();
-        const saved = await api('/api/save', {config: collect()});
-        const picked = state.config.groups.length;
-        el('discover-status').innerHTML = saved.ok
-          ? '<span class="ok">已更新 ' + state.discovered.length + ' 個社團；自動勾選 ' + picked + ' 個（名稱符合規則關鍵字），可再自行調整</span>'
-          : '<span class="warn">抓到 ' + state.discovered.length + ' 個，但儲存失敗</span>';
+        el('discover-status').innerHTML =
+          '<span class="ok">已抓到 ' + state.discovered.length + ' 個社團（預設全部不勾選），請自行勾選要監控的社團後按「儲存設定」</span>';
       } else {
         renderGroups();
         el('discover-status').innerHTML = '<span class="warn">抓到 0 個，清單未變更</span>';
@@ -1120,7 +1130,12 @@ el('btn-test').onclick = async ()=>{
 
 el('btn-save').onclick = async ()=>{
   const wantAuto = el('autostart').checked;
-  const r = await api('/api/save', {config: collect()});
+  const cfg = collect();
+  const r = await api('/api/save', {config: cfg});
+  if (r.ok) {
+    state.config = cfg;
+    renderGroups();
+  }
   if (r.ok && wantAuto && r.autostart === false) {
     el('save-status').innerHTML = '<span class="bad">已儲存，但無法設定開機自動啟動（請改用桌面捷徑開啟程式後再試）</span>';
   } else {
@@ -1130,7 +1145,12 @@ el('btn-save').onclick = async ()=>{
 
 async function startMonitoring(){
   clearTimeout(stopPoll);
-  await api('/api/save', {config: collect()});
+  const cfg = collect();
+  const saved = await api('/api/save', {config: cfg});
+  if (saved.ok) {
+    state.config = cfg;
+    renderGroups();
+  }
   const r = await api('/api/start', {});
   const msg = r.ok ? '<span class="ok">監控已啟動</span>' : '<span class="bad">'+esc(r.error || '啟動失敗')+'</span>';
   el('save-status').innerHTML = msg;
