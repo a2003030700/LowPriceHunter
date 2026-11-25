@@ -2,10 +2,8 @@ Low Price Hunter is a local-first Windows desktop app that monitors Facebook buy
 # Low Price Hunter
 
 > **只想使用？**
-> 直接按右上角綠色 **Code → Download ZIP**，解壓後雙擊 `一鍵安裝 Low Price Hunter.bat` 即可。
-> 執行檔已內附在 `software/LowPriceHunter.zip`，安裝器會自動解壓，**不需要另外下載任何檔案**。
->
-> 也可以在 [Releases](https://github.com/a2003030700/LowPriceHunter/releases/latest) 下載打包好的可攜版。
+> 前往 [Releases](https://github.com/a2003030700/LowPriceHunter/releases/latest) 下載 **`LowPriceHunter-vX.Y.Z-win64.zip`**，解壓後雙擊 `一鍵安裝 Low Price Hunter.bat` 即可。
+> 若用右上角綠色 **Code → Download ZIP**，雙擊 `一鍵安裝 Low Price Hunter.bat` 時安裝器也會自動從 Releases 取得最新正式版安裝。
 
 掃描你已加入的 Facebook 買賣社團，找到符合「關鍵字＋價格區間」的貼文就寄 Email 通知。
 介面是 **WebView2 原生視窗**（不是瀏覽器分頁），支援多社團、多物品、即時或每日摘要。
