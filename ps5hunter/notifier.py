@@ -27,7 +27,7 @@ def _post_json(url: str, payload: dict, timeout: int = 20) -> None:
             "Content-Type": "application/json",
             "Accept": "application/json",
             # Discord / Telegram 前面的 Cloudflare 會擋掉 Python-urllib 預設 UA（403）
-            "User-Agent": "LowPriceHunter/1.2 (+https://github.com/a2003030700/LowPriceHunter)",
+            "User-Agent": "LowPriceHunter/1.3.2 (+https://github.com/a2003030700/LowPriceHunter)",
         },
         method="POST",
     )
@@ -54,10 +54,54 @@ def send_telegram(token: str, chat_id: str, text: str) -> None:
     )
 
 
-def send_discord(webhook_url: str, text: str) -> None:
+def build_discord_embed(
+    rule_name: str,
+    price: int,
+    group_name: str,
+    post_url: str,
+    snippet: str,
+    price_high: int | None = None,
+    sources: list[str] | None = None,
+    risk_words: list[str] | None = None,
+    is_split_sale: bool = False,
+) -> dict:
+    """建立 Discord Embed 卡片（含可點擊直達連結、價格、社團與風險標記）。"""
+    price_text = _fmt_price_range(price, price_high)
+    sources = sources or [group_name]
+    split_tag = "（拆售價）" if is_split_sale else ""
+    warn_prefix = "⚠️ " if risk_words else "🔔 "
+    fields = [
+        {"name": "價格", "value": f"**{price_text}**{split_tag}", "inline": True},
+        {
+            "name": "社團",
+            "value": ("、".join(sources) + f"（共 {len(sources)} 個）") if len(sources) > 1 else group_name,
+            "inline": True,
+        },
+    ]
+    if risk_words:
+        fields.append({"name": "⚠️ 高風險詞", "value": "、".join(risk_words), "inline": False})
+    if post_url:
+        fields.append({"name": "快速開啟貼文", "value": f"[點擊直接前往貼文 →]({post_url})", "inline": False})
+
+    embed: dict = {
+        "title": f"{warn_prefix}{rule_name}｜{price_text}{split_tag}",
+        "description": (snippet or "")[:600],
+        "color": 0xF59E0B if risk_words else 0x10B981,
+        "fields": fields,
+        "footer": {"text": "Low Price Hunter 即時推播"},
+    }
+    if post_url and post_url.startswith(("http://", "https://")):
+        embed["url"] = post_url
+    return embed
+
+
+def send_discord(webhook_url: str, text: str, embed: dict | None = None) -> None:
     if not webhook_url:
         raise NotificationError("Discord 尚未設定")
-    _post_json(webhook_url, {"content": text[:1900]})
+    payload: dict = {"content": (text or "")[:1900]}
+    if embed:
+        payload["embeds"] = [embed]
+    _post_json(webhook_url, payload)
 
 
 def build_text_notification(

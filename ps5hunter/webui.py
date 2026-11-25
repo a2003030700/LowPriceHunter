@@ -7,6 +7,7 @@ import json
 import logging
 import mimetypes
 import os
+import random
 import re
 import secrets
 import shutil
@@ -33,6 +34,7 @@ from .updater import UpdateError, check_for_update
 from .generic import analyze_detail, analyze_post, analyze_text, find_risk_words, rule_from_dict, Rule
 from .notifier import (
     build_digest_message,
+    build_discord_embed,
     build_generic_message,
     build_text_notification,
     send_discord,
@@ -82,6 +84,34 @@ def _content_fingerprint(post) -> str | None:
     if len(title) + len(body) < 16:
         return None
     return "fp:" + hashlib.sha1(core.encode("utf-8")).hexdigest()[:24]
+
+
+def _next_wait_seconds(interval_seconds: int, elapsed_seconds: float, *, jitter: bool = True) -> float:
+    """從本輪開始時間起算剩餘等待秒數（含防風控冷卻下限與 ±15% 隨機抖動）。"""
+    base = max(20.0, float(interval_seconds) - max(0.0, float(elapsed_seconds)))
+    if not jitter:
+        return base
+    return max(20.0, base * random.uniform(0.85, 1.15))
+
+
+def _has_any_ready_channel(
+    channels: list[str],
+    bot: dict,
+    recipients: list[str],
+    channel_secrets: dict,
+) -> bool:
+    """只要任一已勾選渠道具備完整憑證即可發送（不再強制綁死 Email）。"""
+    if "email" in channels and bot and recipients:
+        return True
+    if "telegram" in channels:
+        tg = (channel_secrets or {}).get("telegram") or {}
+        if tg.get("bot_token") and tg.get("chat_id"):
+            return True
+    if "discord" in channels:
+        dc = (channel_secrets or {}).get("discord") or {}
+        if dc.get("webhook_url"):
+            return True
+    return False
 
 
 from .scraper import AuthError, CheckpointError, FBScraper, GroupPausedError, LayoutError
@@ -459,7 +489,12 @@ class App:
                 return {"ok": True}
             if channel == "discord":
                 dc = data.get("discord") or {}
-                send_discord(dc.get("webhook_url", ""), "Low Price Hunter 測試通知")
+                embed = build_discord_embed(
+                    "測試通知", 9500, "Low Price Hunter 測試社團",
+                    "https://github.com/a2003030700/LowPriceHunter",
+                    "如果你在 Discord 收到這張卡片，代表即時推播設定成功！",
+                )
+                send_discord(dc.get("webhook_url", ""), "🔔 **Low Price Hunter** Discord 即時推播測試成功！", embed=embed)
                 return {"ok": True}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
@@ -828,6 +863,8 @@ class App:
 
     def check_login(self) -> dict:
         """用抓取端（Playwright 設定檔）實際檢查 Facebook 登入是否有效。"""
+        if self.monitoring:
+            return {"ok": True, "login": self.login}
         if self.login.get("status") == "waiting":
             return {"ok": False, "error": "登入視窗仍開著", "login": self.login}
         if not self._profile_dir().exists():
@@ -859,11 +896,31 @@ class App:
     def _monitor_loop(self):
         store = Store(DB_PATH)
         first_run = store.is_fresh()
-        self.log("監控執行緒啟動")
+        self.log("監控執行緒啟動（常駐瀏覽器快速模式）")
+        fb: FBScraper | None = None
+        fb_started_at = 0.0
+        fb_profile: Path | None = None
         try:
             while not self.stop_event.is_set():
+                cycle_t0 = time.monotonic()
                 try:
-                    self._cycle(store, first_run)
+                    profile = self._profile_dir()
+                    # 每 60 分鐘或更換設定檔時定期重啟 Chrome，避免長時掛機吃滿記憶體
+                    if fb is not None and (
+                        fb_profile != profile or (time.monotonic() - fb_started_at) >= 3600
+                    ):
+                        try:
+                            fb.__exit__(None, None, None)
+                        except Exception:
+                            pass
+                        fb = None
+                    if fb is None:
+                        with self.browser_lock:
+                            fb = FBScraper(profile, channel="chrome", headless=True)
+                            fb.__enter__()
+                            fb_started_at = time.monotonic()
+                            fb_profile = profile
+                    self._cycle(store, first_run, fb=fb)
                     first_run = False
                     store.set_baseline()
                 except (AuthError, CheckpointError) as exc:
@@ -871,13 +928,148 @@ class App:
                     break
                 except Exception as exc:  # noqa: BLE001
                     self.log(f"掃描失敗：{exc}")
-                if self.stop_event.wait(int(self.config.get("interval_seconds") or 300)):
+                    # 發生瀏覽器異常時釋放舊實例，下輪自動重開
+                    if fb is not None:
+                        try:
+                            fb.__exit__(None, None, None)
+                        except Exception:
+                            pass
+                        fb = None
+                elapsed = time.monotonic() - cycle_t0
+                interval = int(self.config.get("interval_seconds") or 120)
+                wait_sec = _next_wait_seconds(interval, elapsed, jitter=True)
+                if self.stop_event.wait(wait_sec):
                     break
         finally:
+            if fb is not None:
+                try:
+                    fb.__exit__(None, None, None)
+                except Exception:
+                    pass
             store.close()
             self.log("監控已停止")
 
-    def _cycle(self, store: Store, first_run: bool):
+    def _dispatch_immediate(
+        self,
+        store: Store,
+        item: dict,
+        channels: list[str],
+        bot: dict,
+        recipients: list[str],
+        channel_secrets: dict,
+    ) -> bool:
+        """單一貼文命中後立刻去重並推播（不必等待其餘社團掃完）。"""
+        gkey = item["global"]
+        dedup_key = item.get("fp") or gkey
+        group_name = item["group"]
+        sources = [group_name]
+
+        # 若該貼文（依內容指紋或 post_id）已透過其他社團通知過，直接記錄並跳過
+        if store.seen_global(gkey) or not store.claim_global(dedup_key, sources):
+            store.remember(
+                item["key"], group_name, item["url"],
+                item["match"].price, item["post"].text, True,
+                rule_name=item["rule"].name,
+            )
+            return True
+        if gkey != dedup_key:
+            store.remember_global(gkey, sources)
+
+        risks = sorted(set(item.get("risk") or []))
+        price = item["match"].price or 0
+        price_high = item["match"].price_high
+        is_split = bool(getattr(item["match"], "is_split_sale", False))
+        text_message = build_text_notification(
+            item["rule"].name, price,
+            group_name, item["url"], item["post"].short_text,
+            price_high=price_high,
+            sources=sources,
+            risk_words=risks,
+        )
+        sent_channels: list[str] = []
+
+        # 速度優先：先發 Discord / Telegram（通常 < 0.5 秒），再寄 Email SMTP
+        if "discord" in channels:
+            dc = (channel_secrets or {}).get("discord") or {}
+            if dc.get("webhook_url"):
+                try:
+                    price_str = f"NT$ {price:,.0f}" + (f"–{price_high:,.0f}" if price_high and price_high != price else "")
+                    split_tag = "（拆售價）" if is_split else ""
+                    warn_tag = "⚠️ " if risks else "🔔 "
+                    summary_line = f"{warn_tag}**{item['rule'].name}** {price_str}{split_tag}｜{group_name}"
+                    embed = build_discord_embed(
+                        item["rule"].name, price, group_name, item["url"],
+                        item["post"].short_text,
+                        price_high=price_high,
+                        sources=sources,
+                        risk_words=risks,
+                        is_split_sale=is_split,
+                    )
+                    send_discord(dc["webhook_url"], summary_line, embed=embed)
+                    sent_channels.append("Discord")
+                except Exception as exc:  # noqa: BLE001
+                    self.log(f"Discord 失敗：{exc}")
+            else:
+                self.log("Discord 未設定，略過")
+
+        if "telegram" in channels:
+            tg = (channel_secrets or {}).get("telegram") or {}
+            if tg.get("bot_token") and tg.get("chat_id"):
+                try:
+                    send_telegram(tg["bot_token"], tg["chat_id"], text_message)
+                    sent_channels.append("Telegram")
+                except Exception as exc:  # noqa: BLE001
+                    self.log(f"Telegram 失敗：{exc}")
+            else:
+                self.log("Telegram 未設定，略過")
+
+        if "email" in channels and bot and recipients:
+            mail_count = 0
+            for recipient in recipients:
+                try:
+                    msg = build_generic_message(
+                        item["rule"].name, price,
+                        group_name, item["url"], item["post"].short_text,
+                        bot["user"], recipient,
+                        price_high=price_high,
+                        sources=sources,
+                        risk_words=risks,
+                    )
+                    send_gmail(msg, bot["user"], bot["app_password"])
+                    mail_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    self.log(f"寄給 {recipient} 失敗：{exc}")
+            if mail_count:
+                sent_channels.append(f"Email {mail_count} 人")
+
+        if sent_channels:
+            store.remember(
+                item["key"], group_name, item["url"],
+                item["match"].price, item["post"].text, True,
+                rule_name=item["rule"].name,
+            )
+            store.record_price(
+                dedup_key, item["rule"].name, group_name,
+                price, price_high,
+            )
+            price_label = f"NT${price:,}"
+            if price_high and price_high != price:
+                price_label += f"–{price_high:,}"
+            risk_text = f"，高風險：{'、'.join(risks)}" if risks else ""
+            self.log(
+                f"已即時通知：{item['rule'].name} {price_label}"
+                f"（{', '.join(sent_channels)}，{group_name}{risk_text}）｜{item['url']}"
+            )
+            return True
+
+        store.release_global(dedup_key)
+        if gkey != dedup_key:
+            store.release_global(gkey)
+        self.log("通知失敗：沒有任何渠道成功，游標暫不推進")
+        return False
+
+    def _cycle(self, store: Store, first_run: bool, fb: FBScraper | None = None):
+        cycle_t0 = time.monotonic()
         rules = [rule_from_dict(r) for r in self.config.get("rules", [])]
         groups = self.config.get("groups", [])
         recipients = parse_recipients((self.config.get("email") or {}).get("to", ""))
@@ -889,14 +1081,23 @@ class App:
             channel_secrets = {}
         self.log(f"開始掃描 {len(groups)} 個社團、{len(rules)} 條規則")
 
+        own_fb = fb is None
         with self.browser_lock:
-            with FBScraper(self._profile_dir(), channel="chrome", headless=True) as fb:
+            if own_fb:
+                fb = FBScraper(self._profile_dir(), channel="chrome", headless=True)
+                fb.__enter__()
+            try:
+                assert fb is not None
                 if not fb.is_logged_in():
                     self.login = {"status": "error", "account": ""}
                     raise AuthError("尚未登入 Facebook")
                 self.login = {"status": "ok", "account": self.login.get("account", "")}
-                group_states = []
+
+                ready_channel = _has_any_ready_channel(channels, bot, recipients, channel_secrets)
+
                 for group in groups:
+                    if self.stop_event.is_set():
+                        break
                     if "rules" in group and isinstance(group["rules"], list):
                         names = {str(x) for x in group["rules"]}
                         group_rules = [r for r in rules if r.name in names]
@@ -921,11 +1122,13 @@ class App:
                         posts = fb.scrape_group(
                             group.get("name") or "社團",
                             group["url"],
-                            max_posts=int(self.config.get("max_posts_per_group") or 80),
+                            max_posts=int(self.config.get("max_posts_per_group") or 30),
                             stop_at_post_id=(cursor or {}).get("last_post_id"),
                             stop_at_ts=stop_ts,
                             expand_keywords=expand_kws,
                             resolve_when_post=lambda p, gr=group_rules: any(analyze_post(p, r).matched for r in gr),
+                            is_seen=(store.seen if cursor is not None else None),
+                            should_stop=self.stop_event.is_set,
                         )
                     except GroupPausedError:
                         self.log(f"跳過 {group.get('name')}：社團已被管理員暫停")
@@ -954,7 +1157,6 @@ class App:
                         continue
 
                     group_ok = True
-                    pending = []
                     max_age = float(self.config.get("max_post_age_minutes") or 0)
                     for post in posts:
                         key = post.key
@@ -993,11 +1195,11 @@ class App:
                             )
                             self.log(f"加入每日摘要：{best_rule.name} NT${best_match.price:,}")
                             continue
-                        if not (bot and recipients):
-                            self.log("符合條件但 Email 未設定，游標暫不推進")
+                        if not ready_channel:
+                            self.log("符合條件但沒有任何已設定的通知渠道（Email／Discord／Telegram），游標暫不推進")
                             group_ok = False
                             continue
-                        pending.append({
+                        item = {
                             "post": post,
                             "key": key,
                             "url": url,
@@ -1008,126 +1210,24 @@ class App:
                             "global": _global_key(post),
                             "fp": _content_fingerprint(post),
                             "risk": find_risk_words(post.short_text),
-                        })
-                    group_states.append({
-                        "name": group.get("name", ""),
-                        "gid": gid,
-                        "newest_id": newest_id,
-                        "newest_ts": newest_ts,
-                        "ok": group_ok,
-                        "pending": pending,
-                    })
+                        }
+                        if not self._dispatch_immediate(
+                            store, item, channels, bot, recipients, channel_secrets
+                        ):
+                            group_ok = False
 
-                # 先掃完所有社團，再依 post_id / 內容指紋做全局去重，同一篇只寄一封
-                by_global: dict[str, list[dict]] = {}
-                for state in group_states:
-                    for item in state["pending"]:
-                        dedup_key = item.get("fp") or item["global"]
-                        by_global.setdefault(dedup_key, []).append(item)
-
-                failed_globals: set[str] = set()
-                for gkey, items in by_global.items():
-                    sources: list[str] = []
-                    for item in items:
-                        if item["group"] not in sources:
-                            sources.append(item["group"])
-                    if not store.claim_global(gkey, sources):
-                        for item in items:
-                            store.remember(
-                                item["key"], item["group"], item["url"],
-                                item["match"].price, item["post"].text, True,
-                                rule_name=item["rule"].name,
-                            )
-                        continue
-                    for item in items:
-                        if item["global"] != gkey:
-                            store.remember_global(item["global"], sources)
-                    primary = min(
-                        items,
-                        key=lambda x: (x["match"].price or 10**9, x["post"].age_minutes or 0),
-                    )
-                    risks = sorted({word for item in items for word in item["risk"]})
-                    text_message = build_text_notification(
-                        primary["rule"].name, primary["match"].price or 0,
-                        primary["group"], primary["url"], primary["post"].short_text,
-                        price_high=primary["match"].price_high,
-                        sources=sources,
-                        risk_words=risks,
-                    )
-                    sent_channels: list[str] = []
-                    if "email" in channels and bot and recipients:
-                        mail_count = 0
-                        for recipient in recipients:
-                            try:
-                                msg = build_generic_message(
-                                    primary["rule"].name, primary["match"].price or 0,
-                                    primary["group"], primary["url"], primary["post"].short_text,
-                                    bot["user"], recipient,
-                                    price_high=primary["match"].price_high,
-                                    sources=sources,
-                                    risk_words=risks,
-                                )
-                                send_gmail(msg, bot["user"], bot["app_password"])
-                                mail_count += 1
-                            except Exception as exc:  # noqa: BLE001
-                                self.log(f"寄給 {recipient} 失敗：{exc}")
-                        if mail_count:
-                            sent_channels.append(f"Email {mail_count} 人")
-                    if "telegram" in channels:
-                        tg = channel_secrets.get("telegram") or {}
-                        if tg.get("bot_token") and tg.get("chat_id"):
-                            try:
-                                send_telegram(tg["bot_token"], tg["chat_id"], text_message)
-                                sent_channels.append("Telegram")
-                            except Exception as exc:  # noqa: BLE001
-                                self.log(f"Telegram 失敗：{exc}")
-                        else:
-                            self.log("Telegram 未設定，略過")
-                    if "discord" in channels:
-                        dc = channel_secrets.get("discord") or {}
-                        if dc.get("webhook_url"):
-                            try:
-                                send_discord(dc["webhook_url"], text_message)
-                                sent_channels.append("Discord")
-                            except Exception as exc:  # noqa: BLE001
-                                self.log(f"Discord 失敗：{exc}")
-                        else:
-                            self.log("Discord 未設定，略過")
-                    if sent_channels:
-                        for item in items:
-                            store.remember(
-                                item["key"], item["group"], item["url"],
-                                item["match"].price, item["post"].text, True,
-                                rule_name=item["rule"].name,
-                            )
-                        store.record_price(
-                            gkey, primary["rule"].name, primary["group"],
-                            primary["match"].price or 0, primary["match"].price_high,
-                        )
-                        price_label = f"NT${primary['match'].price:,}"
-                        if primary["match"].price_high and primary["match"].price_high != primary["match"].price:
-                            price_label += f"–{primary['match'].price_high:,}"
-                        source_text = f"{len(sources)} 個社團" if len(sources) > 1 else primary["group"]
-                        risk_text = f"，高風險：{'、'.join(risks)}" if risks else ""
-                        self.log(
-                            f"已通知：{primary['rule'].name} {price_label}"
-                            f"（{', '.join(sent_channels)}，{source_text}{risk_text}）｜{primary['url']}"
-                        )
+                    if group_ok:
+                        store.set_cursor(gid, newest_id, newest_ts)
                     else:
-                        store.release_global(gkey)
-                        failed_globals.add(gkey)
-                        self.log("通知失敗：沒有任何渠道成功，游標暫不推進")
-
-                for state in group_states:
-                    failed = any(
-                        (item.get("fp") or item["global"]) in failed_globals
-                        for item in state["pending"]
-                    )
-                    if state["ok"] and not failed:
-                        store.set_cursor(state["gid"], state["newest_id"], state["newest_ts"])
-                    else:
-                        self.log(f"{state['name']}：有貼文未成功處理，游標不推進，下輪重試")
-        self.log("本輪掃描完成")
+                        self.log(f"{group.get('name', '')}：有貼文未成功通知，游標不推進，下輪重試")
+            finally:
+                if own_fb and fb is not None:
+                    try:
+                        fb.__exit__(None, None, None)
+                    except Exception:
+                        pass
+        elapsed = time.monotonic() - cycle_t0
+        self.log(f"本輪掃描完成（耗時 {elapsed:.1f} 秒）")
         self._maybe_send_digest(store, bot, recipients)
 
     def _maybe_send_digest(self, store: Store, bot: dict, recipients: list[str]):

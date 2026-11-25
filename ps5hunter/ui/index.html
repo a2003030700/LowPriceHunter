@@ -247,9 +247,10 @@
       <button class="btn ghost" id="btn-test-tg">測試 Telegram</button>
       <span class="status-line" id="tg-status"></span>
     </div>
-    <h3 style="margin-top:16px">Discord</h3>
+    <h3 style="margin-top:16px">Discord（推薦：手機秒彈推播、支援彩色卡片直達連結）</h3>
     <label>Webhook URL</label>
-    <input id="dc-webhook" type="password" placeholder="留空表示不變">
+    <input id="dc-webhook" type="password" placeholder="https://discord.com/api/webhooks/...（留空表示不變）">
+    <p class="hint">設定方式：在你的 Discord 私人頻道點「編輯頻道 → 整合 → Webhook → 新 Webhook → 複製 Webhook 網址」貼上即可；可單獨勾選 Discord，免設 Gmail。</p>
     <div class="actions">
       <button class="btn ghost" id="btn-test-dc">測試 Discord</button>
       <span class="status-line" id="dc-status"></span>
@@ -279,13 +280,14 @@
     <div class="step"><div class="num">5</div><h2>掃描週期與啟動</h2></div>
     <div class="row">
       <div>
-        <label>每幾分鐘掃描一次</label>
-        <input id="interval" type="number" min="1" value="5">
+        <label>每幾分鐘掃描一次（建議 1–2 分鐘）</label>
+        <input id="interval" type="number" min="1" value="2">
+        <p class="hint">系統會常駐瀏覽器、從開掃起算週期並自動加隨機防風控抖動，命中後立即推播。</p>
       </div>
       <div>
-        <label>每次最多拉幾篇（建議 50–100）</label>
-        <input id="maxposts" type="number" min="10" value="80">
-        <p class="hint">會由新到舊拉，追到上次的游標就停；不是只看前 10 篇。</p>
+        <label>每次最多拉幾篇（建議 15–30）</label>
+        <input id="maxposts" type="number" min="10" value="25">
+        <p class="hint">由新到舊拉，追到已看過的貼文就立刻早停換下一個社團，大幅縮短掃描時間。</p>
       </div>
     </div>
     <label>通知方式</label>

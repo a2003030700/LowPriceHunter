@@ -399,6 +399,7 @@ class FBScraper:
         self._pw = None
         self.ctx: BrowserContext | None = None
         self.page: Page | None = None
+        self._popups_dismissed: bool = False
 
     # ------------------------------------------------------------ lifecycle
     def __enter__(self) -> "FBScraper":
@@ -480,14 +481,17 @@ class FBScraper:
             raise CheckpointError("Facebook 跳出帳號檢查／驗證碼，請先用一般瀏覽器處理。")
 
     def _dismiss_popups(self, page: Page) -> None:
-        for label in ("允許所有 Cookie", "Allow all cookies", "現在不要", "Not now", "稍後再說"):
-            try:
-                btn = page.get_by_role("button", name=label, exact=False).first
-                if btn.is_visible(timeout=400):
-                    btn.click(timeout=800)
-                    time.sleep(0.2)
-            except Exception:
-                pass
+        # 每個瀏覽器工作階段只需完整掃描彈窗一次，避免每個社團白等 2 秒
+        if not self._popups_dismissed:
+            for label in ("允許所有 Cookie", "Allow all cookies", "現在不要", "Not now", "稍後再說"):
+                try:
+                    btn = page.get_by_role("button", name=label, exact=False).first
+                    if btn.is_visible(timeout=300):
+                        btn.click(timeout=600)
+                        time.sleep(0.15)
+                except Exception:
+                    pass
+            self._popups_dismissed = True
         try:
             page.keyboard.press("Escape")
         except Exception:
@@ -509,17 +513,19 @@ class FBScraper:
         stop_at_post_id: str | None = None,
         stop_at_ts: datetime | None = None,
         max_scrolls: int | None = None,
+        is_seen: Callable[[str], bool] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> list[Post]:
         assert self.page
         page = self.page
         group_id = group_url.split("/groups/", 1)[1].split("/")[0].split("?")[0]
 
         page.goto(self._resolve_group_url(group_url), wait_until="domcontentloaded", timeout=60_000)
-        time.sleep(1.5)
+        time.sleep(0.6)
         self._check_blocked(page)
         self._dismiss_popups(page)
         try:
-            head_body = page.inner_text("body", timeout=3000)[:2000]
+            head_body = page.inner_text("body", timeout=2000)[:2000]
             if any(marker in head_body for marker in _PAUSED_GROUP_TEXTS):
                 raise GroupPausedError(f"社團已被管理員暫停（{group_name}）")
         except GroupPausedError:
@@ -529,7 +535,7 @@ class FBScraper:
 
         try:
             page.wait_for_selector(
-                f'div[role="button"][aria-label$="{_ACTION_LABEL_SUFFIX}"]', timeout=20_000
+                f'div[role="button"][aria-label$="{_ACTION_LABEL_SUFFIX}"]', timeout=15_000
             )
         except Exception:
             self._check_blocked(page)
@@ -547,22 +553,18 @@ class FBScraper:
         last_collected = -1
         stall = 0
         expanded = 0
+        consecutive_seen = 0
         reached = False
-        scrolls = max_scrolls if max_scrolls is not None else min(120, max(20, max_posts // 4))
+        scrolls = max_scrolls if max_scrolls is not None else min(120, max(12, max_posts // 4))
 
         for _step in range(scrolls):
+            if should_stop and should_stop():
+                break
             cards = page.evaluate(_CARDS_JS)
             for item in cards:
                 text = _INVISIBLE_RE.sub("", item.get("text") or "").strip()
                 if not text or len(text) > 6000:
                     continue
-                if expanded < 60:
-                    new_text = self._expand_see_more(
-                        page, item.get("id"), text, expand_keywords=expand_keywords
-                    )
-                    if new_text != text:
-                        text = new_text
-                        expanded += 1
                 pid = item.get("pid")
                 commerce = item.get("commerce")
                 if pid:
@@ -576,6 +578,28 @@ class FBScraper:
                     key = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:20]
                 if key in collected:
                     continue
+                # 早停機制：遇到已看過的貼文不再浪費時間展開與捲動（連續 3 篇已看過即認定追上舊文，兼容置頂文）
+                if stop_at_post_id and pid and pid == stop_at_post_id:
+                    reached = True
+                    break
+                if is_seen is not None and is_seen(key):
+                    consecutive_seen += 1
+                    if consecutive_seen >= 3:
+                        reached = True
+                        break
+                    continue
+                consecutive_seen = 0
+                if expanded < 60:
+                    new_text = self._expand_see_more(
+                        page, item.get("id"), text, expand_keywords=expand_keywords
+                    )
+                    if new_text != text:
+                        text = new_text
+                        expanded += 1
+                        if url is None:
+                            key = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:20]
+                            if key in collected:
+                                continue
                 age_days = _relative_days(item.get("age") or "")
                 age_minutes = age_days * 1440 if age_days is not None else None
                 created_at = (
@@ -583,9 +607,6 @@ class FBScraper:
                     if age_minutes is not None
                     else None
                 )
-                if stop_at_post_id and pid and pid == stop_at_post_id:
-                    reached = True
-                    break
                 if (
                     stop_at_ts is not None
                     and created_at is not None
@@ -646,7 +667,7 @@ class FBScraper:
                 break
             if len(collected) <= last_collected:
                 stall += 1
-                if stall >= 5:
+                if stall >= 3:
                     break
             else:
                 stall = 0
@@ -662,7 +683,7 @@ class FBScraper:
                 )
             except Exception:
                 pass
-            time.sleep(1.8)
+            time.sleep(1.0)
 
         posts = list(collected.values())[:max_posts]
         return posts
