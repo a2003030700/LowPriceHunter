@@ -22,6 +22,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
+from .dedup import clean_fb_text, normalize_for_dedup
+
 
 class AuthError(RuntimeError):
     """未登入或登入態失效。"""
@@ -53,35 +55,98 @@ _IGNORE_NOTIF_PREFIXES = (
 # 移除 Facebook 用來混淆時間戳的不可見字元
 _INVISIBLE_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff\u0300-\u036f\u00ad]")
 
-_CARDS_JS = """
-() => {
+# 活體 DOM 可見文字擷取器：避免 detached cloneNode(true) 把 FB CSS 隱藏的隨機反爬蟲亂碼撈出來
+_LIVE_VISIBLE_TEXT_HELPER = r"""
   const clean = s => (s || '')
-    .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '')
+    .replace(/[\u200b-\u200f\u2060\ufeff\u0300-\u036f\u00ad]/g, '')
     .trim();
-  const visibleText = (node) => {
-    if (!node) return '';
-    const clone = node.cloneNode(true);
-    clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-    return clean(clone.innerText || '');
+  const BLOCK_TAGS = new Set(['DIV','P','LI','H1','H2','H3','H4','H5','H6','SECTION','HEADER','FOOTER','TR','BLOCKQUOTE','ARTICLE']);
+  const SKIP_TAGS = new Set(['SCRIPT','STYLE','NOSCRIPT','SVG','TEMPLATE']);
+  const liveVisibleText = (root, excludeComments) => {
+    if (!root) return '';
+    const out = [];
+    const range = document.createRange();
+    const walk = (node, clipBoxes) => {
+      if (!node) return;
+      if (node.nodeType === 3) {
+        const val = node.nodeValue || '';
+        if (!val.trim()) {
+          if (out.length && out[out.length - 1] !== '\n' && !/\s$/.test(out[out.length - 1])) {
+            out.push(' ');
+          }
+          return;
+        }
+        try {
+          range.selectNodeContents(node);
+          const tr = range.getBoundingClientRect();
+          if (tr.width <= 0.5 || tr.height <= 0.5) return;
+          for (const cb of clipBoxes) {
+            if (tr.bottom <= cb.top + 0.5 || tr.top >= cb.bottom - 0.5 ||
+                tr.right <= cb.left + 0.5 || tr.left >= cb.right - 0.5) {
+              return;
+            }
+          }
+        } catch (e) {}
+        out.push(val);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const tag = node.tagName;
+      if (SKIP_TAGS.has(tag)) return;
+      if (tag === 'BR') { out.push('\n'); return; }
+      if (node.getAttribute('aria-hidden') === 'true') return;
+      if (excludeComments && node !== root && node.matches && node.matches('div[role="article"]')) return;
+      const st = window.getComputedStyle(node);
+      if (st) {
+        if (st.display === 'none' || st.visibility === 'hidden' || st.visibility === 'collapse') return;
+        if (parseFloat(st.opacity) === 0 || parseFloat(st.fontSize) === 0) return;
+        if (st.clip === 'rect(0px, 0px, 0px, 0px)' || st.clipPath === 'inset(50%)' || st.clipPath === 'inset(100%)') return;
+        if (st.position === 'absolute') {
+          const top = parseFloat(st.top);
+          const left = parseFloat(st.left);
+          const w = parseFloat(st.width);
+          const h = parseFloat(st.height);
+          if ((!isNaN(top) && top < -500) || (!isNaN(left) && left < -500)) return;
+          if (!isNaN(w) && !isNaN(h) && w <= 1 && h <= 1) return;
+        }
+      }
+      let nextClips = clipBoxes;
+      if (st && st.display !== 'contents' &&
+          (st.overflow === 'hidden' || st.overflow === 'clip' || st.overflowX === 'hidden' || st.overflowY === 'hidden')) {
+        const r = node.getBoundingClientRect();
+        if (r.width <= 1 || r.height <= 1) return;
+        nextClips = clipBoxes.concat([r]);
+      }
+      const isBlock = BLOCK_TAGS.has(tag) || (st && (st.display === 'block' || st.display === 'flex' || st.display === 'grid' || st.display === 'list-item'));
+      if (isBlock && out.length && out[out.length - 1] !== '\n') out.push('\n');
+      for (let ch = node.firstChild; ch; ch = ch.nextSibling) {
+        walk(ch, nextClips);
+      }
+      if (isBlock && out.length && out[out.length - 1] !== '\n') out.push('\n');
+    };
+    walk(root, []);
+    return clean(out.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n'));
   };
+"""
+
+_CARDS_JS = ("""
+() => {
+""" + _LIVE_VISIBLE_TEXT_HELPER + r"""
+  const visibleText = (node) => liveVisibleText(node, false);
   const extractBodyAndComments = (card) => {
     const authorComments = [];
     const commentNodes = Array.from(card.querySelectorAll('div[role="article"]'));
     for (const cn of commentNodes) {
       const lbl = cn.getAttribute('aria-label') || '';
-      const txt = visibleText(cn);
+      const txt = liveVisibleText(cn, false);
       if (txt && (txt.includes('作者') || lbl.includes('作者'))) {
         authorComments.push(txt.slice(0, 300));
       }
     }
-    const clone = card.cloneNode(true);
-    clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-    clone.querySelectorAll('div[role="article"]').forEach(n => n.remove());
-    let raw = (clone.innerText || '')
-      .replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+    let raw = liveVisibleText(card, true);
     const cutMarkers = ['查看更多留言', '查看全部留言', '撰寫公開留言', '以 ', '最相關', '所有留言'];
     for (const mk of cutMarkers) {
-      const idx = raw.indexOf('\\n' + mk);
+      const idx = raw.indexOf('\n' + mk);
       if (idx > 20) raw = raw.slice(0, idx);
     }
     return { text: raw.trim(), authorComments };
@@ -90,7 +155,7 @@ _CARDS_JS = """
     for (const a of card.querySelectorAll('a[aria-label]')) {
       const lbl = clean(a.getAttribute('aria-label') || '');
       if (!lbl || lbl.length > 24) continue;
-      if (/^(大約\\s*)?(\\d+\\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\\d{1,2}月\\d{1,2}日)/.test(lbl)) {
+      if (/^(大約\s*)?(\d+\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\d{1,2}月\d{1,2}日)/.test(lbl)) {
         return lbl;
       }
     }
@@ -100,9 +165,9 @@ _CARDS_JS = """
       const st = window.getComputedStyle(e);
       if (st && (st.display === 'none' || st.visibility === 'hidden' || st.fontSize === '0px')) continue;
       if (e.offsetWidth === 0 && e.offsetHeight === 0) continue;
-      const t = clean(e.innerText || '');
+      const t = liveVisibleText(e, false);
       if (!t || t.length > 16) continue;
-      if (/^(大約\\s*)?(\\d+\\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\\d{1,2}月\\d{1,2}日)前?$/.test(t)) {
+      if (/^(大約\s*)?(\d+\s*(分鐘|小時|天|日|週|星期|個月|年)|昨天|剛剛|\d{1,2}月\d{1,2}日)前?$/.test(t)) {
         return t;
       }
     }
@@ -122,13 +187,13 @@ _CARDS_JS = """
       const st = window.getComputedStyle(el);
       if (el.tagName === 'DEL' || el.tagName === 'S' || (st && (st.textDecorationLine || '').includes('line-through'))) {
         const t = clean(el.innerText || '');
-        if (/^(NT\\$?|\\$)[\\d,]+/.test(t)) { listingOrigPrice = t; break; }
+        if (/^(NT\$?|\$)[\d,]+/.test(t)) { listingOrigPrice = t; break; }
       }
     }
     if (commerceLink) {
-      const lines = visibleText(commerceLink).split(/\\n+/).map(x => x.trim()).filter(Boolean);
+      const lines = visibleText(commerceLink).split(/\n+/).map(x => x.trim()).filter(Boolean);
       for (const ln of lines) {
-        if (!listingPrice && (/^(NT\\$?|\\$)[\\d,]+/.test(ln) || ln === '免費')) {
+        if (!listingPrice && (/^(NT\$?|\$)[\d,]+/.test(ln) || ln === '免費')) {
           listingPrice = ln;
         } else if (!listingTitle && !/^(已售出|缺貨|發訊息|傳送訊息)$/.test(ln) && ln.length >= 2) {
           listingTitle = ln;
@@ -139,7 +204,7 @@ _CARDS_JS = """
   };
   const out = [];
   const buttons = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
-    .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
+    .filter(b => (b.getAttribute('aria-label') || '').endsWith('__ACTION_SUFFIX__'));
   let i = 0;
   for (const eb of buttons) {
     let card = eb;
@@ -153,7 +218,7 @@ _CARDS_JS = """
     const listing = extractListing(card);
     let author = '';
     const headLink = card.querySelector('h2 a, h3 a, h4 a, strong a, strong');
-    if (headLink) author = clean(headLink.innerText || '').slice(0, 60);
+    if (headLink) author = liveVisibleText(headLink, false).slice(0, 60);
     // 抓貼文第一張較大的商品圖（排除頭像與表情符號小圖）
     let imageUrl = '';
     for (const img of card.querySelectorAll('img[src]')) {
@@ -167,15 +232,28 @@ _CARDS_JS = """
         break;
       }
     }
-    const a = card.querySelector('a[href*="set=gm."]');
     let pid = null;
-    if (a) { const m = a.href.match(/gm\\.(\\d+)/); if (m) pid = m[1]; }
+    let photoId = null;
+    for (const link of card.querySelectorAll('a[href]')) {
+      const h = link.href || '';
+      if (!h) continue;
+      let m = h.match(/\/groups\/[^/?#]+\/(?:posts|permalink)\/(\d+)/);
+      if (m) { pid = m[1]; break; }
+      m = h.match(/[?&]set=(?:gm|pcb)\.(\d+)/);
+      if (m) { pid = m[1]; break; }
+      m = h.match(/[?&](?:multi_permalinks|story_fbid)=(\d+)/);
+      if (m) { pid = m[1]; break; }
+      if (!photoId) {
+        m = h.match(/[?&]fbid=(\d+)/);
+        if (m) photoId = m[1];
+      }
+    }
     let commerce = null;
     const cl = card.querySelector('a[href*="/commerce/listing/"]');
-    if (cl) { const m = cl.href.match(/commerce\\/listing\\/(\\d+)/); if (m) commerce = m[1]; }
+    if (cl) { const m = cl.href.match(/commerce\/listing\/(\d+)/); if (m) commerce = m[1]; }
     if (!commerce) {
       const mp = card.querySelector('a[href*="product_id="]');
-      if (mp) { const m = mp.href.match(/product_id=(\\d+)/); if (m) commerce = m[1]; }
+      if (mp) { const m = mp.href.match(/product_id=(\d+)/); if (m) commerce = m[1]; }
     }
     out.push({
       id: i,
@@ -188,6 +266,7 @@ _CARDS_JS = """
       listing_original_price: listing.listingOrigPrice,
       listing_status: listing.listingStatus,
       pid: pid,
+      photo_id: photoId,
       commerce: commerce,
       age: age
     });
@@ -195,12 +274,12 @@ _CARDS_JS = """
   }
   return out;
 }
-""" % _ACTION_LABEL_SUFFIX
+""").replace("__ACTION_SUFFIX__", _ACTION_LABEL_SUFFIX)
 
-_CLICK_SHARE_JS = """
+_CLICK_SHARE_JS = ("""
 (idx) => {
   const bs = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
-    .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
+    .filter(b => (b.getAttribute('aria-label') || '').endsWith('__ACTION_SUFFIX__'));
   const eb = bs[idx];
   if (!eb) return false;
   let card = eb;
@@ -214,12 +293,13 @@ _CLICK_SHARE_JS = """
   share.click();
   return true;
 }
-""" % _ACTION_LABEL_SUFFIX
+""").replace("__ACTION_SUFFIX__", _ACTION_LABEL_SUFFIX)
 
-_FIND_CARD_JS = """
+_FIND_CARD_JS = ("""
 (snip) => {
+""" + _LIVE_VISIBLE_TEXT_HELPER + r"""
   const bs = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
-    .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
+    .filter(b => (b.getAttribute('aria-label') || '').endsWith('__ACTION_SUFFIX__'));
   let i = 0;
   for (const eb of bs) {
     let card = eb;
@@ -228,20 +308,18 @@ _FIND_CARD_JS = """
       card = card.parentElement;
     }
     if (!card) { i++; continue; }
-    const c = card.cloneNode(true);
-    c.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-    const t = (c.innerText || '').replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+    const t = liveVisibleText(card, true);
     if (t.includes(snip)) return i;
     i++;
   }
   return null;
 }
-""" % _ACTION_LABEL_SUFFIX
+""").replace("__ACTION_SUFFIX__", _ACTION_LABEL_SUFFIX)
 
-_EXPAND_CARD_JS = """
+_EXPAND_CARD_JS = ("""
 (idx) => {
   const bs = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
-    .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
+    .filter(b => (b.getAttribute('aria-label') || '').endsWith('__ACTION_SUFFIX__'));
   const eb = bs[idx];
   if (!eb) return false;
   let card = eb;
@@ -256,12 +334,13 @@ _EXPAND_CARD_JS = """
   more.click();
   return true;
 }
-""" % _ACTION_LABEL_SUFFIX
+""").replace("__ACTION_SUFFIX__", _ACTION_LABEL_SUFFIX)
 
-_CARD_TEXT_JS = """
+_CARD_TEXT_JS = ("""
 (idx) => {
+""" + _LIVE_VISIBLE_TEXT_HELPER + r"""
   const bs = Array.from(document.querySelectorAll('div[role="button"][aria-label]'))
-    .filter(b => (b.getAttribute('aria-label') || '').endsWith('%s'));
+    .filter(b => (b.getAttribute('aria-label') || '').endsWith('__ACTION_SUFFIX__'));
   const eb = bs[idx];
   if (!eb) return '';
   let card = eb;
@@ -270,17 +349,14 @@ _CARD_TEXT_JS = """
     card = card.parentElement;
   }
   if (!card) return '';
-  const clone = card.cloneNode(true);
-  clone.querySelectorAll('[aria-hidden="true"]').forEach(n => n.remove());
-  clone.querySelectorAll('div[role="article"]').forEach(n => n.remove());
-  let raw = (clone.innerText || '').replace(/[\\u200b-\\u200f\\u2060\\ufeff\\u0300-\\u036f\\u00ad]/g, '');
+  let raw = liveVisibleText(card, true);
   for (const mk of ['查看更多留言', '查看全部留言', '撰寫公開留言', '以 ', '最相關', '所有留言']) {
-    const pos = raw.indexOf('\\n' + mk);
+    const pos = raw.indexOf('\n' + mk);
     if (pos > 20) raw = raw.slice(0, pos);
   }
   return raw.trim();
 }
-""" % _ACTION_LABEL_SUFFIX
+""").replace("__ACTION_SUFFIX__", _ACTION_LABEL_SUFFIX)
 
 
 _CLICK_COMMENT_JS = """
@@ -360,15 +436,19 @@ def _relative_days(text: str) -> float | None:
 def _body_snippet(text: str, length: int = 24) -> str:
     """取出貼文正文的開頭，用來在 DOM 裡重新找回同一張卡片。
 
-    卡片文字開頭常是「作者 + 已驗證 + 分享對象：…」，直接取前 36 字會對不上，
-    所以先切掉「分享對象：」之前的部分。
+    卡片文字開頭常是「作者 + 已驗證 + 分享對象：公開社團…」，
+    必須只剝除受眾標頭，不可把沒有【】的整段正文一起吞掉。
     """
-    m = re.search(r"分享對象：[^【\[]*", text)
-    body = text[m.end():] if m else text
+    cleaned = clean_fb_text(text)
+    m = re.search(
+        r"分享對象：\s*(?:公開社團|私密社團|社團成員|公開|朋友|只限本人|[^\n]{1,12}\n)\s*",
+        cleaned,
+    )
+    body = cleaned[m.end():] if m else cleaned
     snippet = body.strip()[:length].strip()
     if len(snippet) >= 6:
         return snippet
-    return text[12:12 + length].strip()
+    return cleaned[:length].strip()
 
 
 @dataclass
@@ -389,6 +469,7 @@ class Post:
     listing_original_price: str = ""
     listing_status: str = ""
     author_comments: list[str] = field(default_factory=list)
+    raw_key: str = ""
 
     @property
     def short_text(self) -> str:
@@ -577,20 +658,29 @@ class FBScraper:
                 break
             cards = page.evaluate(_CARDS_JS)
             for item in cards:
-                text = _INVISIBLE_RE.sub("", item.get("text") or "").strip()
+                text = clean_fb_text(item.get("text") or "")
                 if not text or len(text) > 6000:
                     continue
+                author = clean_fb_text(str(item.get("author") or ""))[:60]
                 pid = item.get("pid")
                 commerce = item.get("commerce")
+                photo_id = item.get("photo_id")
+                fallback_url = None
                 if pid:
                     url = f"https://www.facebook.com/groups/{group_id}/posts/{pid}/"
                     key = f"{group_id}_{pid}"
                 elif commerce:
                     url = f"https://www.facebook.com/commerce/listing/{commerce}/"
                     key = f"{group_id}_c{commerce}"
+                elif photo_id:
+                    url = None
+                    fallback_url = f"https://www.facebook.com/photo/?fbid={photo_id}"
+                    key = f"{group_id}_f{photo_id}"
                 else:
                     url = None
-                    key = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:20]
+                    norm_key = normalize_for_dedup(text, author=author)
+                    key_src = norm_key if len(norm_key) >= 10 else text
+                    key = "h_" + hashlib.sha1(key_src.encode("utf-8")).hexdigest()[:20]
                 if key in collected:
                     continue
                 # 早停機制：遇到已看過的貼文不再浪費時間展開與捲動（連續 3 篇已看過即認定追上舊文，兼容置頂文）
@@ -611,8 +701,10 @@ class FBScraper:
                     if new_text != text:
                         text = new_text
                         expanded += 1
-                        if url is None:
-                            key = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:20]
+                        if url is None and not photo_id:
+                            norm_key = normalize_for_dedup(text, author=author)
+                            key_src = norm_key if len(norm_key) >= 10 else text
+                            key = "h_" + hashlib.sha1(key_src.encode("utf-8")).hexdigest()[:20]
                             if key in collected:
                                 continue
                 age_days = _relative_days(item.get("age") or "")
@@ -629,6 +721,7 @@ class FBScraper:
                 ):
                     reached = True
                     break
+                raw_key = key
                 post = Post(
                     key=key,
                     group_name=group_name,
@@ -639,17 +732,18 @@ class FBScraper:
                     card_id=item.get("id"),
                     age_minutes=age_minutes,
                     created_at=created_at,
-                    author=str(item.get("author") or ""),
+                    author=author,
                     image_url=str(item.get("image_url") or ""),
-                    listing_title=str(item.get("listing_title") or ""),
+                    listing_title=clean_fb_text(str(item.get("listing_title") or "")),
                     listing_price=str(item.get("listing_price") or ""),
                     listing_original_price=str(item.get("listing_original_price") or ""),
                     listing_status=str(item.get("listing_status") or ""),
                     author_comments=[
-                        str(c) for c in (item.get("author_comments") or []) if str(c).strip()
+                        clean_fb_text(str(c)) for c in (item.get("author_comments") or []) if str(c).strip()
                     ],
+                    raw_key=raw_key,
                 )
-                collected[key] = post
+                collected[raw_key] = post
                 should_resolve = False
                 if url is None:
                     try:
@@ -674,6 +768,8 @@ class FBScraper:
                                     post.key = f"{group_id}_s{m.group(1)}"
                     except Exception:
                         pass
+                if post.url is None and fallback_url:
+                    post.url = fallback_url
                 if len(collected) >= max_posts:
                     break
 
@@ -727,7 +823,7 @@ class FBScraper:
                 time.sleep(0.6)
                 expanded = page.evaluate(_CARD_TEXT_JS, idx)
                 if expanded:
-                    expanded = _INVISIBLE_RE.sub("", expanded).strip()
+                    expanded = clean_fb_text(expanded)
                     if len(expanded) > len(text):
                         return expanded
         except Exception:  # noqa: BLE001

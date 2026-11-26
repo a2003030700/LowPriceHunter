@@ -27,7 +27,7 @@ def _post_json(url: str, payload: dict, timeout: int = 20) -> None:
             "Content-Type": "application/json",
             "Accept": "application/json",
             # Discord / Telegram 前面的 Cloudflare 會擋掉 Python-urllib 預設 UA（403）
-            "User-Agent": "LowPriceHunter/1.4.0 (+https://github.com/a2003030700/LowPriceHunter)",
+            "User-Agent": "LowPriceHunter/1.4.2 (+https://github.com/a2003030700/LowPriceHunter)",
         },
         method="POST",
     )

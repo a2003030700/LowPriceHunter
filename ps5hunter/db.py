@@ -154,6 +154,35 @@ class Store:
             for r in rows
         ]
 
+    def recent_notified_deals(self, hours: int = 24, limit: int = 200) -> list[dict]:
+        """回傳指定小時內已通知的貼文清單（供跨社團／同賣家去重使用）。"""
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, hours))).isoformat(
+            timespec="seconds"
+        )
+        rows = self.conn.execute(
+            "SELECT key, group_name, url, price, text, found_at, rule, author"
+            " FROM posts"
+            " WHERE notified = 1 AND price IS NOT NULL AND rule IS NOT NULL"
+            " AND found_at >= ?"
+            " ORDER BY found_at DESC LIMIT ?",
+            (cutoff, limit),
+        ).fetchall()
+        return [
+            {
+                "key": r[0],
+                "group": r[1] or "",
+                "url": r[2] or "",
+                "price": r[3],
+                "text": (r[4] or "")[:600],
+                "found_at": r[5] or "",
+                "rule": r[6] or "",
+                "author": r[7] or "",
+            }
+            for r in rows
+        ]
+
     def record_blocked(
         self,
         post_key: str,

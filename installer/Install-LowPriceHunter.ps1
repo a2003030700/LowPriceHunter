@@ -151,7 +151,7 @@ try {
     $reg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\LowPriceHunter"
     New-Item $reg -Force | Out-Null
     Set-ItemProperty $reg -Name DisplayName -Value "Low Price Hunter"
-    Set-ItemProperty $reg -Name DisplayVersion -Value "1.4.1"
+    Set-ItemProperty $reg -Name DisplayVersion -Value "1.4.2"
     Set-ItemProperty $reg -Name Publisher -Value "Low Price Hunter"
     Set-ItemProperty $reg -Name InstallLocation -Value $InstallDir
     Set-ItemProperty $reg -Name DisplayIcon -Value $exe

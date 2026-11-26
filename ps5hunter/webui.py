@@ -30,6 +30,12 @@ from .botstore import BotStore
 from .channels import ChannelStore
 from .config import ROOT, load_dotenv
 from .db import Store
+from .dedup import (
+    clean_fb_text,
+    content_fingerprint,
+    find_cross_group_duplicate,
+    normalize_for_dedup,
+)
 from . import __version__
 from .updater import (
     UpdateError,
@@ -82,7 +88,7 @@ def parse_recipients(value) -> list[str]:
 
 
 def _global_key(post) -> str:
-    """跨社團去重用的鍵：post_id 優先，其次正規化網址，最後文字雜湊。"""
+    """跨社團去重用的鍵：post_id 優先，其次正規化網址，最後淨化後文字雜湊。"""
     if post.post_id:
         return "p:" + str(post.post_id)
     if post.url:
@@ -90,17 +96,42 @@ def _global_key(post) -> str:
         m = re.search(r"/(?:posts|permalink)/(\d+)", clean)
         if m:
             return "p:" + m.group(1)
+        m_fbid = re.search(r"[?&]fbid=(\d+)", post.url)
+        if m_fbid:
+            return "f:" + m_fbid.group(1)
         return "u:" + clean
-    return "t:" + hashlib.sha1(post.short_text.encode("utf-8")).hexdigest()
+    norm = normalize_for_dedup(
+        post.short_text,
+        author=str(getattr(post, "author", "") or ""),
+        listing_title=str(getattr(post, "listing_title", "") or ""),
+    )
+    src = norm if len(norm) >= 10 else post.short_text
+    return "t:" + hashlib.sha1(src.encode("utf-8")).hexdigest()
+
+
 def _content_fingerprint(post) -> str | None:
-    """跨社團同作者複製貼文去重指紋。"""
-    author = re.sub(r"\s+", "", (getattr(post, "author", "") or "").lower())
-    title = re.sub(r"\s+", "", (getattr(post, "listing_title", "") or "").lower())
-    body = re.sub(r"\s+", "", (getattr(post, "text", "") or "").lower())[:200]
-    core = f"{author}|{title}|{body}"
-    if len(title) + len(body) < 16:
-        return None
-    return "fp:" + hashlib.sha1(core.encode("utf-8")).hexdigest()[:24]
+    """跨社團同作者複製貼文去重指紋（抗 FB 亂碼與社團標頭差異）。"""
+    return content_fingerprint(
+        str(getattr(post, "author", "") or ""),
+        str(getattr(post, "text", "") or ""),
+        str(getattr(post, "listing_title", "") or ""),
+    )
+
+
+def _remember_raw_alias(store: Store, post, group_name: str, url: str) -> None:
+    """若貼文解析後升級了 key，同步記住原始 raw_key 避免下輪重抓重解。"""
+    raw_key = str(getattr(post, "raw_key", "") or "")
+    if raw_key and raw_key != post.key and not store.seen(raw_key):
+        store.remember(
+            raw_key,
+            group_name,
+            url,
+            None,
+            post.text,
+            True,
+            author=str(getattr(post, "author", "") or ""),
+            image_url=str(getattr(post, "image_url", "") or ""),
+        )
 
 
 def _next_wait_seconds(interval_seconds: int, elapsed_seconds: float, *, jitter: bool = True) -> float:
@@ -1477,24 +1508,61 @@ class App:
         dedup_key = item.get("fp") or gkey
         group_name = item["group"]
         sources = [group_name]
+        price = item["match"].price or 0
 
-        # 若該貼文（依內容指紋或 post_id）已透過其他社團通知過，直接記錄並跳過
+        # 第一層：若該貼文（依貼文 ID 或淨化正文指紋）已透過其他社團通知過，直接記錄並跳過
         post_author = str(getattr(item["post"], "author", "") or "")
         post_image = str(getattr(item["post"], "image_url", "") or "")
         if store.seen_global(gkey) or not store.claim_global(dedup_key, sources):
             store.remember(
                 item["key"], group_name, item["url"],
-                item["match"].price, item["post"].text, True,
-                rule_name=item["rule"].name,
+                None, item["post"].text, True,
                 author=post_author,
                 image_url=post_image,
             )
+            _remember_raw_alias(store, item["post"], group_name, item["url"])
+            store.record_blocked(
+                item["key"], group_name, post_author, item["url"],
+                item["rule"].name, "重複貼文（跨社團／指紋已通知）", price,
+                item["post"].short_text, image_url=post_image,
+            )
+            self._reset_daily_stats_if_needed()
+            self._stats["blocked_today"] += 1
+            self.log(f"略過重複貼文：{item['rule'].name} NT${price:,}（指紋／ID 已通知，{group_name}）")
             return True
         if gkey != dedup_key:
             store.remember_global(gkey, sources)
 
+        # 第二／三層：近 24 小時同賣家同價位冷卻 + 跨社團文案相似度比對（若降價仍照常通知）
+        recent_notified = store.recent_notified_deals(hours=24, limit=200)
+        dup = find_cross_group_duplicate(
+            author=post_author,
+            rule_name=item["rule"].name,
+            price=price,
+            text=item["post"].text,
+            listing_title=str(getattr(item["post"], "listing_title", "") or ""),
+            recent_deals=recent_notified,
+            current_group=group_name,
+        )
+        if dup is not None:
+            store.remember(
+                item["key"], group_name, item["url"],
+                None, item["post"].text, True,
+                author=post_author,
+                image_url=post_image,
+            )
+            _remember_raw_alias(store, item["post"], group_name, item["url"])
+            store.record_blocked(
+                item["key"], group_name, post_author, item["url"],
+                item["rule"].name, dup["reason"], price,
+                item["post"].short_text, image_url=post_image,
+            )
+            self._reset_daily_stats_if_needed()
+            self._stats["blocked_today"] += 1
+            self.log(f"略過重複貼文：{item['rule'].name} NT${price:,}｜{dup['reason']}")
+            return True
+
         risks = sorted(set(item.get("risk") or []))
-        price = item["match"].price or 0
         price_high = item["match"].price_high
         is_split = bool(getattr(item["match"], "is_split_sale", False))
         text_message = build_text_notification(
@@ -1570,6 +1638,7 @@ class App:
                 author=post_author,
                 image_url=post_image,
             )
+            _remember_raw_alias(store, item["post"], group_name, item["url"])
             store.record_price(
                 dedup_key, item["rule"].name, group_name,
                 price, price_high,
@@ -1690,8 +1759,10 @@ class App:
                     max_age = float(self.config.get("max_post_age_minutes") or 0)
                     for post in posts:
                         key = post.key
-                        if store.seen(key):
+                        raw_key = str(getattr(post, "raw_key", "") or "")
+                        if store.seen(key) or (raw_key and store.seen(raw_key)):
                             continue
+                        post.text = clean_fb_text(post.text)
                         url = post.url or group["url"]
                         post_author = str(getattr(post, "author", "") or "")
                         post_image = str(getattr(post, "image_url", "") or "")
