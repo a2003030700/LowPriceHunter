@@ -303,6 +303,38 @@
     background:var(--brand-soft);color:var(--brand);padding:1px 6px;border-radius:5px;font-weight:700;
   }
   hr.sep{border:none;border-top:1px solid var(--line);margin:16px 0;}
+
+  /* Update Confirmation Modal */
+  .modal-backdrop{
+    position:fixed;inset:0;z-index:9999;
+    background:rgba(2,6,23,.65);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-backdrop[hidden]{display:none !important;}
+  .modal-card{
+    width:100%;max-width:480px;
+    background:var(--card);border:1px solid var(--line-strong);border-radius:18px;
+    padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.45);
+    animation:modalIn .18s ease-out;
+  }
+  @keyframes modalIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+  .modal-head h2{margin:0;font-size:18px;font-weight:800;}
+  .modal-close{
+    border:none;background:transparent;color:var(--muted);font-size:20px;line-height:1;
+    cursor:pointer;padding:4px 8px;border-radius:8px;
+  }
+  .modal-close:hover{background:var(--card-hover);color:var(--ink);}
+  .modal-ver{
+    display:inline-flex;align-items:center;gap:8px;margin:4px 0 12px;
+    padding:6px 12px;border-radius:10px;background:var(--brand-soft);color:var(--brand);
+    font-size:13px;font-weight:700;
+  }
+  .modal-notes{
+    background:var(--card-soft);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;font-size:12.5px;color:var(--ink-2);line-height:1.6;
+    max-height:150px;overflow:auto;white-space:pre-wrap;margin:10px 0 12px;
+  }
 </style>
 </head>
 <body>
@@ -696,6 +728,25 @@
     </div>
   </div>
   </div><!-- settings-panel -->
+</div>
+
+<!-- Update Confirmation Modal -->
+<div class="modal-backdrop" id="update-modal" hidden role="dialog" aria-modal="true" aria-labelledby="um-title">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="step-left"><div class="num">⬆</div><h2 id="um-title">發現新版本，是否立即更新？</h2></div>
+      <button type="button" class="modal-close" id="btn-um-close" aria-label="關閉">✕</button>
+    </div>
+    <div class="modal-ver" id="um-ver">v1.0.0 → v1.0.1</div>
+    <p class="hint" id="um-desc" style="margin:0;color:var(--ink-2);font-size:13.5px;">按下「立即自動更新並重啟」會自動下載新版、覆蓋舊版程式並重啟，<b>data 資料夾內的登入與所有設定都會完整保留</b>。</p>
+    <div class="modal-notes" id="um-notes" hidden></div>
+    <p class="status-line" id="um-status" style="margin:10px 0 4px;"></p>
+    <div class="actions" style="justify-content:flex-end;margin-top:14px;">
+      <button type="button" class="btn ghost" id="btn-um-later">稍後再說</button>
+      <button type="button" class="btn ghost" id="btn-um-download">僅下載更新檔</button>
+      <button type="button" class="btn good" id="btn-um-apply">🚀 立即自動更新並重啟</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1702,12 +1753,109 @@ el('btn-start-main').onclick = startMonitoring;
 el('btn-stop').onclick = stopMonitoring;
 el('btn-stop-main').onclick = stopMonitoring;
 
+let updateApplying = false;
+
+function openUpdateModal(update){
+  const modal = el('update-modal');
+  if (!modal || !update) return;
+  const en = currentLang === 'en';
+  el('um-title').textContent = en ? 'Update Available — Update Now?' : '發現新版本，是否立即更新？';
+  el('um-ver').textContent = 'v' + (update.current || '?') + '  →  v' + (update.latest || '?');
+  el('um-desc').innerHTML = en
+    ? 'Click <b>Update &amp; Restart</b> to download, replace the app, and restart automatically. All login sessions and settings in <b>data/</b> are preserved.'
+    : '按下「立即自動更新並重啟」會自動下載新版、覆蓋舊版程式並重啟，<b>data 資料夾內的登入與所有設定都會完整保留</b>。';
+  const notesEl = el('um-notes');
+  const notes = (update.notes || '').trim();
+  if (notes) {
+    notesEl.textContent = notes.slice(0, 1200);
+    notesEl.hidden = false;
+  } else {
+    notesEl.hidden = true;
+  }
+  el('um-status').textContent = '';
+  el('btn-um-apply').disabled = false;
+  el('btn-um-download').disabled = false;
+  el('btn-um-later').disabled = false;
+  modal.hidden = false;
+}
+
+function closeUpdateModal(){
+  if (updateApplying) return;
+  const modal = el('update-modal');
+  if (modal) modal.hidden = true;
+}
+
+el('btn-um-close').onclick = closeUpdateModal;
+el('btn-um-later').onclick = closeUpdateModal;
+el('update-modal').onclick = (e)=>{ if (e.target === el('update-modal')) closeUpdateModal(); };
+document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && !el('update-modal').hidden) closeUpdateModal(); });
+
+el('btn-um-apply').onclick = async ()=>{
+  updateApplying = true;
+  el('btn-um-apply').disabled = true;
+  el('btn-um-download').disabled = true;
+  el('btn-um-later').disabled = true;
+  el('um-status').innerHTML = '<span class="warn">正在下載並驗證更新檔，請勿關閉電腦…</span>';
+  const r = await api('/api/update/apply', {});
+  if (r.ok) {
+    el('um-status').innerHTML = '<span class="ok">更新準備完成！程式即將自動關閉並於幾秒內重新啟動新版…</span>';
+  } else {
+    updateApplying = false;
+    el('btn-um-apply').disabled = false;
+    el('btn-um-download').disabled = false;
+    el('btn-um-later').disabled = false;
+    el('um-status').innerHTML = '<span class="bad">' + esc(r.error || '自動更新失敗') + '</span>';
+  }
+};
+
+el('btn-um-download').onclick = async ()=>{
+  el('btn-um-download').disabled = true;
+  el('um-status').innerHTML = '<span class="warn">正在下載更新檔到桌面…</span>';
+  const r = await api('/api/update/download', {});
+  el('btn-um-download').disabled = false;
+  el('um-status').innerHTML = r.ok
+    ? '<span class="ok">已下載：<b>' + esc(r.path) + '</b></span>'
+    : '<span class="bad">' + esc(r.error || '下載失敗') + '</span>';
+};
+
+let updateCheckPoll = null;
 el('btn-update-check-settings').onclick = async ()=>{
+  clearTimeout(updateCheckPoll);
+  const btn = el('btn-update-check-settings');
+  btn.disabled = true;
+  el('update-settings-status').innerHTML = '<span class="warn">正在檢查 GitHub Releases…</span>';
   await api('/api/save', {config: collect()});
   const r = await api('/api/update/check', {});
-  if (!r.ok) { el('update-settings-status').innerHTML = '<span class="bad">' + esc(r.error || '無法檢查') + '</span>'; return; }
-  el('update-settings-status').textContent = '檢查中…';
-  setTimeout(refresh, 3000);
+  if (!r.ok) {
+    btn.disabled = false;
+    el('update-settings-status').innerHTML = '<span class="bad">' + esc(r.error || '無法檢查') + '</span>';
+    return;
+  }
+  let tries = 0;
+  const poll = async ()=>{
+    tries += 1;
+    let st = null;
+    try { st = (await api('/api/state')).status; } catch (e) { st = null; }
+    const u = st && st.update;
+    if (u && u.status !== 'checking') {
+      btn.disabled = false;
+      renderUpdate(u);
+      const hasNew = u.status === 'done' && (u.available || (u.skipped && u.latest && u.latest !== u.current));
+      if (hasNew) {
+        openUpdateModal(u);
+      } else if (u.status === 'done') {
+        el('update-settings-status').innerHTML = '<span class="ok">✅ ' + esc(u.message || ('已是最新版本 ' + (u.current || ''))) + '</span>';
+      }
+      return;
+    }
+    if (tries >= 35) {
+      btn.disabled = false;
+      el('update-settings-status').innerHTML = '<span class="bad">檢查逾時，請稍後再試</span>';
+      return;
+    }
+    updateCheckPoll = setTimeout(poll, 600);
+  };
+  updateCheckPoll = setTimeout(poll, 600);
 };
 
 el('btn-update-open').onclick = async ()=>{

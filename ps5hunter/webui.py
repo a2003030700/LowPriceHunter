@@ -37,6 +37,7 @@ from .dedup import (
     normalize_for_dedup,
 )
 from . import __version__
+from .sslutil import build_ssl_context
 from .updater import (
     UpdateError,
     build_apply_update_script,
@@ -1253,8 +1254,12 @@ class App:
         request = urllib.request.Request(url, headers={"User-Agent": "LowPriceHunter-Updater/1.0"})
         total = 0
         tmp = dest.with_suffix(dest.suffix + ".part")
+        ctx = build_ssl_context()
+        open_kwargs = {"timeout": timeout}
+        if ctx is not None:
+            open_kwargs["context"] = ctx
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response, tmp.open("wb") as out:
+            with urllib.request.urlopen(request, **open_kwargs) as response, tmp.open("wb") as out:
                 while True:
                     chunk = response.read(1024 * 1024)
                     if not chunk:

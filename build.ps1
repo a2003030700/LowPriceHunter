@@ -60,6 +60,7 @@ Write-Host "[4/5] PyInstaller"
     --add-data "assets;assets" `
     --add-data "native_host;native_host" `
     --collect-all playwright `
+    --collect-data certifi `
     start_ui.py
 
 Write-Host "[5/5] 打包可攜版與更新檔"

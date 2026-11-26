@@ -7,7 +7,16 @@ import re
 import urllib.request
 from dataclasses import dataclass
 
-_UA = "LowPriceHunter/1.4.0 (+https://github.com/a2003030700/LowPriceHunter)"
+from .sslutil import build_ssl_context
+
+_UA = "LowPriceHunter/1.4.3 (+https://github.com/a2003030700/LowPriceHunter)"
+
+
+def _open_url(req: urllib.request.Request, timeout: int):
+    ctx = build_ssl_context()
+    if ctx is not None:
+        return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+    return urllib.request.urlopen(req, timeout=timeout)
 
 
 def is_in_quiet_hours(hour: int, start_hour: int, end_hour: int) -> bool:
@@ -92,7 +101,7 @@ def poll_telegram_updates(token: str, offset: int = 0, timeout: int = 10) -> tup
     if offset > 0:
         url += f"&offset={offset}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _open_url(req, timeout=timeout) as resp:
         data = json.loads(resp.read().decode("utf-8", "replace"))
     if not data.get("ok"):
         return [], offset
@@ -130,7 +139,7 @@ def poll_discord_messages(
             "Accept": "application/json",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _open_url(req, timeout=timeout) as resp:
         rows = json.loads(resp.read().decode("utf-8", "replace"))
     if not isinstance(rows, list) or not rows:
         return [], after_id
@@ -171,5 +180,5 @@ def send_discord_bot_reply(bot_token: str, channel_id: str, text: str, timeout: 
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with _open_url(req, timeout=timeout) as resp:
         resp.read()

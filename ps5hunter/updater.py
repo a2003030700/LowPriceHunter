@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import __version__
+from .sslutil import build_ssl_context
 
 API_URL = "https://api.github.com/repos/{repo}/releases/latest"
 USER_AGENT = "LowPriceHunter-Updater/1.0"
@@ -71,7 +72,11 @@ def check_for_update(repo: str, timeout: int = 15) -> UpdateInfo:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        ctx = build_ssl_context()
+        open_kwargs = {"timeout": timeout}
+        if ctx is not None:
+            open_kwargs["context"] = ctx
+        with urllib.request.urlopen(request, **open_kwargs) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

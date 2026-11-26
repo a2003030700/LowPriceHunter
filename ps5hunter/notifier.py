@@ -13,6 +13,7 @@ from email.utils import formatdate
 
 from .parser import Analysis
 from .scraper import Post
+from .sslutil import build_ssl_context
 
 
 class NotificationError(RuntimeError):
@@ -27,12 +28,16 @@ def _post_json(url: str, payload: dict, timeout: int = 20) -> None:
             "Content-Type": "application/json",
             "Accept": "application/json",
             # Discord / Telegram 前面的 Cloudflare 會擋掉 Python-urllib 預設 UA（403）
-            "User-Agent": "LowPriceHunter/1.4.2 (+https://github.com/a2003030700/LowPriceHunter)",
+            "User-Agent": "LowPriceHunter/1.4.3 (+https://github.com/a2003030700/LowPriceHunter)",
         },
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        ctx = build_ssl_context()
+        open_kwargs = {"timeout": timeout}
+        if ctx is not None:
+            open_kwargs["context"] = ctx
+        with urllib.request.urlopen(req, **open_kwargs) as resp:
             resp.read()
     except urllib.error.HTTPError as exc:
         detail = ""
@@ -205,7 +210,7 @@ def build_message(post: Post, analysis: Analysis, threshold: int, sender: str, t
 
 
 def send_gmail(msg: EmailMessage, user: str, app_password: str, timeout: int = 30) -> None:
-    context = ssl.create_default_context()
+    context = build_ssl_context() or ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=timeout) as smtp:
         smtp.login(user, app_password.replace(" ", ""))
         smtp.send_message(msg)
